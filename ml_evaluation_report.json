@@ -1,0 +1,47 @@
+{
+  "auditTimestamp": "2026-09-12T03:32:00.000Z",
+  "auditType": "SIH_PROBLEM_STATEMENT_26168_DATASET_AND_HELD_OUT_EVALUATION",
+  "deviceStorageAudit": {
+    "localStorage_navisense_field_test_records_v1": null,
+    "physicalFieldTestCount": 0,
+    "availableDatasetSamples": 15,
+    "availableSessions": ["TRIAL-TEST06-20M", "TRIAL-TEST07-50M"]
+  },
+  "datasetPartitions": {
+    "training": {
+      "sessionId": "TRIAL-TEST06-20M",
+      "sampleCount": 8,
+      "description": "Standardized 20m straight-line walk partition"
+    },
+    "validation": {
+      "sessionId": "TRIAL-TEST07-50M",
+      "sampleCount": 7,
+      "description": "Standardized 50m straight-line walk partition"
+    },
+    "heldOutTesting": {
+      "sessionId": null,
+      "sampleCount": 0,
+      "exists": false,
+      "description": "No genuinely held-out test split exists in local storage"
+    }
+  },
+  "validationSetEvaluation": {
+    "sampleCount": 7,
+    "sessionCount": 1,
+    "groundTruthDistanceMeters": 5.145,
+    "baselineWeinbergDistanceMeters": 4.887,
+    "baselineDistanceErrorMeters": 0.258,
+    "baselineDistanceErrorPercent": 5.01,
+    "mlAssistedDistanceMeters": 5.679,
+    "mlAssistedDistanceErrorMeters": 0.534,
+    "mlAssistedDistanceErrorPercent": 10.38,
+    "baselineMeanStrideErrorMeters": 0.0369,
+    "mlMeanStrideErrorMeters": 0.0763,
+    "improvementPercent": -107.0
+  },
+  "heldOutEvaluation": {
+    "status": "UNAVAILABLE",
+    "reason": "Zero samples allocated to an independent, non-validation held-out set"
+  },
+  "formalConclusion": "Existing data is sufficient for training/validation but insufficient for an unbiased ML performance claim."
+}
