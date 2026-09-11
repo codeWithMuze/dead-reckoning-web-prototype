@@ -1,0 +1,56 @@
+@import 'leaflet/dist/leaflet.css';
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+:root {
+  --color-background: #050505;
+  --color-panel: #0f0f11;
+  --color-border: #1f1f23;
+  --color-text: #eaeaea;
+  --color-muted: #88888e;
+  --color-primary: #3b82f6;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+}
+
+@theme {
+  --color-background: var(--color-background);
+  --color-panel: var(--color-panel);
+  --color-border: var(--color-border);
+  --color-text: var(--color-text);
+  --color-muted: var(--color-muted);
+  --color-primary: var(--color-primary);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-danger: var(--color-danger);
+  --font-sans: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-text font-sans antialiased overflow-hidden;
+  }
+}
+
+
+.leaflet-container {
+  background: #0f0f11 !important;
+  font-family: 'Inter', sans-serif !important;
+}
+
+/* Custom dark mode map styles for Leaflet */
+.leaflet-layer,
+.leaflet-control-zoom-in,
+.leaflet-control-zoom-out {
+  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+}
+
+/* Force hide all map watermarks and attributions */
+.leaflet-control-attribution,
+.leaflet-bottom.leaflet-right {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
