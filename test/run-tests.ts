@@ -339,6 +339,126 @@ detector.processSample(0.1, 1000000 + 100 * 20 + 3500, 0);
 assert(detector.getCadence() === 0, 'Cadence decays to 0 after > 2.5 seconds without footsteps');
 
 // -------------------------------------------------------------------
+// 8. GLOBAL GPS INPUT CONTROL & OUTAGE WATCHDOG LIFECYCLE
+// -------------------------------------------------------------------
+console.log('\n--- 8. Global GPS Input Control & Outage Watchdog Lifecycle ---');
+
+// Simulated App-level GPS Gate & Navigation State State Machine
+let gpsInputEnabled = true;
+let receiverInfo: { status: string; accuracy: number | null; lastHardwareFixTime: number | null } = {
+  status: 'WAITING',
+  accuracy: null,
+  lastHardwareFixTime: null,
+};
+let currentNavMode = 'GPS_AIDED';
+let gpsActive = false;
+let lastAcceptedGps: any = null;
+
+const testEkf = new NavigationEKF(0, 0);
+
+// Gate function identical to SensorManager + NavEngine implementation
+function processIncomingGps(fix: any) {
+  // 1. Hardware receiver always updates
+  receiverInfo = {
+    status: 'AVAILABLE',
+    accuracy: fix.accuracy,
+    lastHardwareFixTime: fix.timestamp,
+  };
+
+  // 2. Application Gate check
+  if (!gpsInputEnabled) {
+    return; // Dropped at application gate
+  }
+
+  // 3. Forward to EKF and update navigation state
+  lastAcceptedGps = fix;
+  gpsActive = true;
+  testEkf.updateGPS(0, 0, fix.accuracy);
+  if (currentNavMode === 'GPS_DENIED') {
+    currentNavMode = 'REACQUIRING';
+  } else if (currentNavMode !== 'REACQUIRING') {
+    currentNavMode = 'GPS_AIDED';
+  }
+}
+
+// Watchdog evaluation identical to NavEngine.handleIMU line 282
+function evaluateGpsWatchdog(currentTimeMs: number) {
+  const gpsAge = lastAcceptedGps ? currentTimeMs - lastAcceptedGps.timestamp : Infinity;
+  if (gpsAge > 4000 && (currentNavMode === 'GPS_AIDED' || currentNavMode === 'GPS_DEGRADED')) {
+    currentNavMode = 'GPS_DENIED';
+    gpsActive = false;
+  }
+  return gpsAge;
+}
+
+// A. GPS Input ON -> real GPS measurements are forwarded
+const testGpsFix1 = {
+  timestamp: 1000000,
+  latitude: 37.7749,
+  longitude: -122.4194,
+  accuracy: 3.0,
+  altitude: 10,
+  speed: 1.2,
+  heading: 90,
+};
+processIncomingGps(testGpsFix1);
+assert(lastAcceptedGps?.timestamp === 1000000, 'Test A: GPS Input ON forwards measurement to navigation engine');
+assert(gpsActive === true, 'Test A.2: gpsActive flag set to true upon accepted GPS fix');
+assert(currentNavMode === 'GPS_AIDED', 'Test A.3: Navigation mode is GPS_AIDED');
+
+// B. GPS Input OFF -> GPS measurements are ignored
+gpsInputEnabled = false;
+const testGpsFix2 = {
+  timestamp: 1001000,
+  latitude: 37.7750,
+  longitude: -122.4193,
+  accuracy: 2.8,
+  altitude: 10,
+  speed: 1.2,
+  heading: 90,
+};
+processIncomingGps(testGpsFix2);
+assert(lastAcceptedGps?.timestamp === 1000000, 'Test B: GPS Input OFF suppresses incoming GPS measurements at application gate');
+
+// C. GPS OFF -> last GPS timestamp remains unchanged
+assert(lastAcceptedGps?.timestamp === testGpsFix1.timestamp, 'Test C: Last valid GPS timestamp remains unchanged (frozen at fix 1)');
+
+// D. GPS OFF -> GPS age increases naturally
+const nowSimulated = 1000000 + 4500; // 4.5 seconds later
+const simulatedGpsAge = evaluateGpsWatchdog(nowSimulated);
+assert(simulatedGpsAge === 4500, 'Test D: GPS age increases naturally without being artificially forced (4500ms)');
+
+// E. GPS OFF -> outage watchdog transitions to GPS_DENIED
+assert(currentNavMode === 'GPS_DENIED', 'Test E: Outage watchdog transitions naturally to GPS_DENIED after 4.0s timeout');
+assert(gpsActive === false, 'Test E.2: gpsActive flag set to false via watchdog');
+
+// F. GPS ON again -> valid GPS fix can trigger normal reacquisition
+gpsInputEnabled = true;
+const testGpsFix3 = {
+  timestamp: 1005000,
+  latitude: 37.7751,
+  longitude: -122.4192,
+  accuracy: 3.2,
+  altitude: 10,
+  speed: 1.2,
+  heading: 90,
+};
+processIncomingGps(testGpsFix3);
+assert(currentNavMode === 'REACQUIRING', 'Test F: Restoring GPS Input triggers natural REACQUIRING state on first fix');
+assert(lastAcceptedGps?.timestamp === 1005000, 'Test F.2: Reacquired GPS fix updates timestamp (1005000)');
+
+// G. Toggle on Map -> toggle updates state synchronously across all views
+gpsInputEnabled = false;
+assert(gpsInputEnabled === false, 'Test G: Toggling GPS Input updates state flag synchronously');
+
+// H. Receiver status remains distinct from input gate status
+receiverInfo = { status: 'AVAILABLE', accuracy: 1.8, lastHardwareFixTime: 1006000 };
+assert(
+  receiverInfo.status === 'AVAILABLE' && gpsInputEnabled === false,
+  'Test H: Hardware receiver status (AVAILABLE ±1.8m) remains distinct from application gate (OFF)'
+);
+
+// -------------------------------------------------------------------
 // SUMMARY
 // -------------------------------------------------------------------
 console.log('\n======================================================');

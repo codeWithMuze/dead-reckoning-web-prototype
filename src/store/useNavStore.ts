@@ -11,6 +11,9 @@ interface NavStore {
   gpsTrail: [number, number][]; // [lat, lon]
   drTrail: [number, number][];   // PDR trajectory
   fusedTrail: [number, number][]; // EKF trajectory
+  gpsInputEnabled: boolean;
+  setGpsInputEnabled: (enabled: boolean) => void;
+  updateGPSReceiver: (info: Partial<import('../types').GPSReceiverInfo>) => void;
   updateNavState: (partial: Partial<NavigationState>) => void;
   updateCalibration: (cal: CalibrationData) => void;
   updateSensor: (sample: SensorSample) => void;
@@ -79,6 +82,12 @@ const initialNavState: NavigationState = {
   distanceTraveled: 0,
   isDemoMode: false,
   gpsActive: false,
+  gpsInputEnabled: true,
+  gpsReceiver: {
+    status: 'WAITING',
+    accuracy: null,
+    lastHardwareFixTime: null,
+  },
   pdr: initialPDR,
   ekf: initialEKF,
   debug: initialDebug,
@@ -92,6 +101,25 @@ export const useNavStore = create<NavStore>((set) => ({
   gpsTrail: [],
   drTrail: [],
   fusedTrail: [],
+  gpsInputEnabled: true,
+  setGpsInputEnabled: (enabled) =>
+    set((state) => ({
+      gpsInputEnabled: enabled,
+      navState: {
+        ...state.navState,
+        gpsInputEnabled: enabled,
+      },
+    })),
+  updateGPSReceiver: (info) =>
+    set((state) => ({
+      navState: {
+        ...state.navState,
+        gpsReceiver: {
+          ...state.navState.gpsReceiver,
+          ...info,
+        },
+      },
+    })),
   updateNavState: (partial) => set((state) => ({ navState: { ...state.navState, ...partial } })),
   updateCalibration: (cal) => set({ calibration: cal }),
   updateSensor: (sample) => set({ latestSensor: sample }),

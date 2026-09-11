@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 export const FieldTestPage: React.FC = () => {
-  const { navState, calibration, latestSensor } = useNavStore();
+  const { navState, calibration, latestSensor, gpsInputEnabled, setGpsInputEnabled } = useNavStore();
   const [selectedTestId, setSelectedTestId] = useState<TestId>('TEST-01');
   const [testStatus, setTestStatus] = useState(fieldTestManager.getStatus());
   const [elapsedSec, setElapsedSec] = useState(0);
@@ -485,9 +485,39 @@ export const FieldTestPage: React.FC = () => {
         {/* Guided GPS Outage Workflow Panel (Active for TEST-09 and TEST-10) */}
         {(selectedTestId === 'TEST-09' || selectedTestId === 'TEST-10') && (
           <div className="bg-background/70 border border-border rounded-xl p-3.5 space-y-2 mt-2">
-            <span className="text-[10px] font-bold text-muted uppercase tracking-widest block">
-              Guided GNSS Outage & Recovery State Machine
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-muted uppercase tracking-widest block">
+                Guided GNSS Outage & Recovery State Machine
+              </span>
+              <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                gpsInputEnabled ? 'bg-success/15 border-success/30 text-success' : 'bg-warning/20 border-warning/40 text-warning animate-pulse'
+              }`}>
+                GPS Input: {gpsInputEnabled ? 'ON' : 'OFF (SIMULATED)'}
+              </span>
+            </div>
+
+            {/* Optional Application-Level GPS Input Gate Control for Testing */}
+            <div className="bg-panel/90 border border-border/80 rounded-lg p-2.5 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <span className="text-[10px] font-bold text-white uppercase tracking-wider block">
+                  Optional Test Method: Application-Level GPS Input Disable
+                </span>
+                <span className="text-[11px] text-muted">
+                  Simulate GPS loss via software gate without needing a physical RF shield.
+                </span>
+              </div>
+              <button
+                onClick={() => setGpsInputEnabled(!gpsInputEnabled)}
+                className={`px-3 py-1 rounded text-xs font-mono font-bold transition-all cursor-pointer border ${
+                  gpsInputEnabled 
+                    ? 'bg-warning/20 border-warning/40 text-warning hover:bg-warning/30' 
+                    : 'bg-success/20 border-success/40 text-success hover:bg-success/30'
+                }`}
+              >
+                {gpsInputEnabled ? 'DISABLE GPS INPUT' : 'ENABLE GPS INPUT'}
+              </button>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-mono">
               {/* Phase 1 */}
               <div className={`p-2.5 rounded-lg border flex items-center space-x-2 ${
@@ -507,7 +537,7 @@ export const FieldTestPage: React.FC = () => {
                 <span className="w-2 h-2 rounded-full bg-warning" />
                 <div>
                   <div className="font-bold text-[11px]">Phase 2: GPS Outage</div>
-                  <div className="text-[10px]">{!navState.gpsActive ? 'PDR COASTING (RF LOST)' : 'WAITING OUTAGE'}</div>
+                  <div className="text-[10px]">{!navState.gpsActive ? 'PDR COASTING' : 'WAITING OUTAGE'}</div>
                 </div>
               </div>
 
@@ -578,6 +608,14 @@ export const FieldTestPage: React.FC = () => {
                     <div className="flex justify-between"><span>PDR Distance:</span><span className="text-white font-bold">{latestRecord.measured.distanceMeters}m</span></div>
                     <div className="flex justify-between"><span>Cadence:</span><span className="text-gray-300">{latestRecord.measured.cadence} spm</span></div>
                     <div className="flex justify-between"><span>Final FDE:</span><span className="text-white font-bold">{latestRecord.measured.fdeMeters}m</span></div>
+                    {latestRecord.outageType && (
+                      <div className="flex justify-between">
+                        <span>Outage Type:</span>
+                        <span className={latestRecord.outageType === 'APPLICATION_INPUT_DISABLED' ? 'text-warning font-bold' : 'text-primary font-bold'}>
+                          {latestRecord.outageType === 'APPLICATION_INPUT_DISABLED' ? 'APP INPUT GATED' : 'PHYSICAL GNSS LOSS'}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between"><span>1σ Uncertainty:</span><span className="text-gray-300">±{latestRecord.measured.finalUncertainty1Sigma}m</span></div>
                   </>
                 )}

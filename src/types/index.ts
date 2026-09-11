@@ -35,6 +35,12 @@ export interface GPSMeasurement {
   heading: number | null;
 }
 
+export interface GPSReceiverInfo {
+  status: 'AVAILABLE' | 'WAITING' | 'ERROR' | 'UNAVAILABLE';
+  accuracy: number | null;
+  lastHardwareFixTime: number | null;
+}
+
 export interface Position2D {
   latitude: number;
   longitude: number;
@@ -144,6 +150,8 @@ export interface NavigationState {
   distanceTraveled: number;
   isDemoMode: boolean;
   gpsActive: boolean;
+  gpsInputEnabled: boolean;
+  gpsReceiver: GPSReceiverInfo;
   pdr: PDRState;
   ekf: EKFTelemetry;
   debug: DebugTelemetry;

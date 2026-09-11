@@ -1,4 +1,5 @@
 import { navEngine } from './NavEngine';
+import { useNavStore } from '../store/useNavStore';
 
 export class SensorManager {
   private static instance: SensorManager;
@@ -43,7 +44,12 @@ export class SensorManager {
     if ('geolocation' in navigator) {
       this.watchId = navigator.geolocation.watchPosition(
         this.handleGPS,
-        (err) => console.warn('GPS Error:', err),
+        (err) => {
+          console.warn('GPS Error:', err);
+          useNavStore.getState().updateGPSReceiver({
+            status: err.code === 1 ? 'UNAVAILABLE' : 'ERROR',
+          });
+        },
         { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
       );
     }
@@ -106,6 +112,21 @@ export class SensorManager {
   }
 
   private handleGPS = (position: GeolocationPosition) => {
+    const store = useNavStore.getState();
+
+    // 1. Always record physical hardware receiver status
+    store.updateGPSReceiver({
+      status: 'AVAILABLE',
+      accuracy: position.coords.accuracy,
+      lastHardwareFixTime: position.timestamp,
+    });
+
+    // 2. Application-level GPS input gate
+    if (!store.gpsInputEnabled) {
+      // Application test: ignore/suppress fix from entering NavEngine
+      return;
+    }
+
     navEngine.handleGPS({
       timestamp: position.timestamp,
       latitude: position.coords.latitude,

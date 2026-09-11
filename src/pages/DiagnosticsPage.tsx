@@ -112,7 +112,16 @@ export const DiagnosticsPage = () => {
               </button>
             ) : null}
           />
-          <StatusRow label="GPS Geolocation API" status={'geolocation' in navigator ? 'AVAILABLE' : 'UNAVAILABLE'} />
+          <StatusRow 
+            label="GPS Receiver (Hardware)" 
+            status={navState.gpsReceiver?.status === 'AVAILABLE' 
+              ? `AVAILABLE (±${navState.gpsReceiver.accuracy ? navState.gpsReceiver.accuracy.toFixed(1) : '?'}m)` 
+              : ('geolocation' in navigator ? 'WAITING FIX' : 'UNAVAILABLE')} 
+          />
+          <StatusRow 
+            label="GPS Input Gate (App)" 
+            status={navState.gpsInputEnabled ? 'ON (ACCEPTED)' : 'OFF (SIMULATED OUTAGE)'} 
+          />
           <StatusRow label="Device Motion API" status={typeof DeviceMotionEvent !== 'undefined' ? 'AVAILABLE' : 'UNAVAILABLE'} />
           <StatusRow label="Device Orientation API" status={typeof DeviceOrientationEvent !== 'undefined' ? 'AVAILABLE' : 'UNAVAILABLE'} />
         </div>
@@ -121,7 +130,24 @@ export const DiagnosticsPage = () => {
           <StatusRow label="Navigation Engine" status={navState.mode !== 'IDLE' ? 'ONLINE' : 'STANDBY'} />
           <StatusRow label="Motion Classifier" status={navState.motionState} />
           <StatusRow label="Attitude Reference" status={navState.headingType === 'ABSOLUTE' ? 'ABSOLUTE COMPASS' : 'RELATIVE ORIGIN'} />
+          <StatusRow 
+            label="Outage Watchdog State" 
+            status={navState.mode === 'GPS_DENIED' ? (!navState.gpsInputEnabled ? 'GATE_MUTED' : 'SIGNAL_LOST') : 'TRACKING'} 
+          />
           <StatusRow label="Security Context" status={window.isSecureContext ? 'SECURE (HTTPS)' : 'INSECURE (NO HTTPS)'} />
+        </div>
+      </div>
+
+      {/* SIH Technical Disclosure: GPS Outage Methodology */}
+      <div className="bg-panel border border-border/80 rounded-xl p-4 sm:p-5 flex items-start space-x-3.5 shadow-sm">
+        <div className="p-2 rounded-lg bg-primary/10 border border-primary/20 text-primary flex-shrink-0 mt-0.5">
+          <Info className="w-5 h-5" />
+        </div>
+        <div className="space-y-1">
+          <h4 className="text-xs font-bold text-white uppercase tracking-wider">SIH Technical Disclosure & Experimental Note</h4>
+          <p className="text-xs text-muted leading-relaxed">
+            Web applications cannot directly control the iPhone system Location Services switch. NaviSense provides an application-level GPS input gate for controlled GPS-outage testing. Disabling GPS Input tests the actual stale-data watchdog, EKF covariance inflation, and PDR dead-reckoning coasting without falsifying physical RF reception.
+          </p>
         </div>
       </div>
 

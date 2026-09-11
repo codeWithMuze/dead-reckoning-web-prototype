@@ -13,6 +13,7 @@ const createIcon = (color: string) => L.divIcon({
 });
 
 const gpsIcon = createIcon('#10b981'); // success green
+const lastGpsIcon = createIcon('#64748b'); // slate gray for last known fix
 const estIcon = createIcon('#3b82f6'); // primary blue
 
 export const LiveMap = () => {
@@ -52,6 +53,7 @@ export const LiveMap = () => {
   const heading = navState.heading.toFixed(0);
   const uncertainty = navState.uncertainty.toFixed(1);
   const gpsAccuracy = navState.gps ? navState.gps.accuracy.toFixed(1) : '---';
+  const gpsAgeSec = navState.gps ? Math.max(0, Math.floor((Date.now() - navState.gps.timestamp) / 1000)) : null;
 
   return (
     <div className="w-full h-full relative overflow-hidden flex flex-col">
@@ -83,9 +85,12 @@ export const LiveMap = () => {
           <Polyline positions={fusedTrail} color="#3b82f6" weight={4} opacity={0.9} />
         )}
 
-        {/* Current GPS Position */}
-        {navState.gpsActive && navState.gps && (
-          <Marker position={[navState.gps.latitude, navState.gps.longitude]} icon={gpsIcon} />
+        {/* Current GPS Position or Last Known Position */}
+        {navState.gps && (
+          <Marker 
+            position={[navState.gps.latitude, navState.gps.longitude]} 
+            icon={navState.gpsActive ? gpsIcon : lastGpsIcon} 
+          />
         )}
 
         {/* Current Estimated Position & Uncertainty */}
@@ -133,12 +138,17 @@ export const LiveMap = () => {
             <MetricCard label="EKF 1σ / 2σ" value={`${uncertainty}/${(navState.uncertainty2Sigma || Number(uncertainty) * 2).toFixed(1)}`} unit="m" />
             <MetricCard label="STEPS (PDR)" value={navState.pdr?.stepCount ?? 0} unit={`${navState.pdr?.cadence?.toFixed(0) ?? 0} spm`} />
             <MetricCard 
-              label="MOTION" 
-              value={navState.motionState} 
+              label="GPS INPUT" 
+              value={navState.gpsInputEnabled ? 'ON' : 'OFF (TEST)'} 
               unit="" 
-              highlight={navState.motionState === 'WALKING' ? 'text-success' : navState.motionState === 'STATIONARY' ? 'text-primary' : 'text-muted'} 
+              highlight={navState.gpsInputEnabled ? 'text-success' : 'text-warning'}
             />
-            <MetricCard label="GPS ACC" value={gpsAccuracy} unit="m" />
+            <MetricCard 
+              label={navState.gpsActive ? "GPS ACC" : "LAST GPS FIX"} 
+              value={navState.gpsActive ? gpsAccuracy : (gpsAgeSec !== null ? `${gpsAgeSec}s` : '---')} 
+              unit={navState.gpsActive ? "m" : (gpsAgeSec !== null ? "ago" : "")} 
+              highlight={navState.gpsActive ? 'text-white' : 'text-warning'}
+            />
           </div>
         )}
       </div>

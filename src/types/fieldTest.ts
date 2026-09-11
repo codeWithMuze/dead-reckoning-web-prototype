@@ -67,6 +67,7 @@ export interface MeasuredTelemetry {
   gpsReacquisitionInnovationM?: number;
   uncertaintyBeforeReacquisitionM?: number;
   uncertaintyAfterReacquisitionM?: number;
+  outageType?: 'APPLICATION_INPUT_DISABLED' | 'PHYSICAL_GNSS_LOSS';
 }
 
 export interface CalculatedErrors {
@@ -100,6 +101,7 @@ export interface FieldTestRecord {
   durationSec: number;
   samplingRateHz: number;
   calibrationState: string;
+  outageType?: 'APPLICATION_INPUT_DISABLED' | 'PHYSICAL_GNSS_LOSS';
   groundTruth: GroundTruthEntry;
   measured: MeasuredTelemetry;
   errors: CalculatedErrors;

@@ -137,6 +137,7 @@ export class FieldTestManager {
   private uncertaintyBeforeReacquisition = 0;
   private uncertaintyAfterReacquisition = 0;
   private reacquisitionInnovationM = 0;
+  private recordedOutageType?: 'APPLICATION_INPUT_DISABLED' | 'PHYSICAL_GNSS_LOSS';
 
   private records: FieldTestRecord[] = [];
   private wakeLockSentinel: any = null;
@@ -290,17 +291,18 @@ export class FieldTestManager {
 
     // GPS Outage State Machine for TEST-09 and TEST-10
     if (this.activeTestId === 'TEST-09' || this.activeTestId === 'TEST-10') {
+      const store = useNavStore.getState();
       if (this.outagePhase === 'BASELINE_LOCKED' && !gpsActive) {
         // Transition: GPS Lost -> Outage Coasting
         this.outagePhase = 'OUTAGE_COASTING';
         this.outageStartTimestamp = Date.now();
+        this.recordedOutageType = !store.gpsInputEnabled ? 'APPLICATION_INPUT_DISABLED' : 'PHYSICAL_GNSS_LOSS';
       } else if (this.outagePhase === 'OUTAGE_COASTING' && gpsActive) {
         // Transition: GPS Reacquired
         this.outagePhase = 'REACQUIRED';
         this.outageEndTimestamp = Date.now();
         this.uncertaintyBeforeReacquisition = uncertainty1Sigma;
 
-        const store = useNavStore.getState();
         if (store.navState.debug.gpsLocalPos) {
           const dx = store.navState.debug.gpsLocalPos.east - ekfPos.east;
           const dy = store.navState.debug.gpsLocalPos.north - ekfPos.north;
@@ -400,6 +402,10 @@ export class FieldTestManager {
       gpsReacquisitionInnovationM: this.reacquisitionInnovationM || undefined,
       uncertaintyBeforeReacquisitionM: this.uncertaintyBeforeReacquisition || undefined,
       uncertaintyAfterReacquisitionM: this.uncertaintyAfterReacquisition || undefined,
+      outageType:
+        this.activeTestId === 'TEST-09' || this.activeTestId === 'TEST-10'
+          ? (this.recordedOutageType || (!store.gpsInputEnabled ? 'APPLICATION_INPUT_DISABLED' : 'PHYSICAL_GNSS_LOSS'))
+          : undefined,
     };
 
     // Protocol-Specific Rigorous Error Calculations
@@ -518,6 +524,7 @@ export class FieldTestManager {
       durationSec,
       samplingRateHz: 50, // Nominal, real rate calculated via timestamps
       calibrationState: store.calibration.calibrated ? 'CALIBRATED' : 'UNCALIBRATED',
+      outageType: measured.outageType,
       groundTruth,
       measured,
       errors,
@@ -661,6 +668,7 @@ export class FieldTestManager {
       'Browser',
       'Duration_sec',
       'Calibration',
+      'Outage_Type',
       'GroundTruth_Steps',
       'GroundTruth_Distance_m',
       'Measured_Steps',
@@ -689,6 +697,7 @@ export class FieldTestManager {
       r.browser,
       r.durationSec,
       r.calibrationState,
+      r.outageType ?? '',
       r.groundTruth.trueSteps ?? '',
       r.groundTruth.trueDistanceMeters ?? '',
       r.measured.steps,

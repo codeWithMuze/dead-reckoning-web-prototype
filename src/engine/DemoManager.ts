@@ -76,8 +76,17 @@ export class DemoManager {
         gyro: { x: gx, y: gy, z: gz },
       });
 
-      // GPS 1Hz update (with realistic accuracy)
-      if (this.gpsAvailable && now % 1000 < 25) {
+      // Record simulated receiver status
+      if (now % 1000 < 25) {
+        useNavStore.getState().updateGPSReceiver({
+          status: this.gpsAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
+          accuracy: 3.5,
+          lastHardwareFixTime: now,
+        });
+      }
+
+      // GPS 1Hz update (with realistic accuracy) - respects global GPS input gate
+      if (this.gpsAvailable && useNavStore.getState().gpsInputEnabled && now % 1000 < 25) {
         navEngine.handleGPS({
           timestamp: now,
           latitude: this.lat + (Math.random() - 0.5) * 0.00004,

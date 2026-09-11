@@ -89,6 +89,7 @@ export class NavEngine {
 
   public handleGPS(gps: GPSMeasurement) {
     const store = useNavStore.getState();
+    if (!store.gpsInputEnabled) return;
     const currentMode = store.navState.mode;
 
     // First GPS Fix establishes the session origin
@@ -281,7 +282,7 @@ export class NavEngine {
     const now = Date.now();
     const gpsAge = store.navState.gps ? now - store.navState.gps.timestamp : Infinity;
 
-    if (gpsAge > 4000 && store.navState.mode === 'GPS_AIDED') {
+    if (gpsAge > 4000 && (store.navState.mode === 'GPS_AIDED' || store.navState.mode === 'GPS_DEGRADED')) {
       store.updateNavState({ mode: 'GPS_DENIED', gpsActive: false });
     }
 
