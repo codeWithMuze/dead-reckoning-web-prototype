@@ -54,30 +54,38 @@ export class DemoManager {
       this.lat += dLat * (180 / Math.PI);
       this.lon += dLon * (180 / Math.PI);
 
-      // Generate IMU data (noisy acceleration around 0, since it's constant velocity)
-      const noise = () => (Math.random() - 0.5) * 0.2;
-      const ax = (Math.sin(now / 300) * 0.5) + noise(); // Simulate walking bob
-      const ay = (Math.sin(now / 300 + Math.PI/2) * 0.5) + noise();
-      const az = 9.81 + (Math.sin(now / 150) * 0.8) + noise();
+      // Generate realistic human walking harmonics (~1.8 Hz step frequency)
+      const tSec = now / 1000.0;
+      const stepPhase = 2 * Math.PI * 1.8 * tSec; // 1.8 steps per second (~108 spm)
+      
+      const noise = () => (Math.random() - 0.5) * 0.15;
+      const ax = 0.4 * Math.sin(stepPhase * 0.5) + noise(); // Lateral sway
+      const ay = 0.6 * Math.cos(stepPhase) + noise();       // Forward-backward stride impulse
+      const az = 9.81 + 2.2 * Math.sin(stepPhase) + noise(); // Vertical impact (~4.4 m/s² swing)
+
+      // Angular velocities (rad/s) during walking
+      const gx = 0.1 * Math.sin(stepPhase) + noise() * 0.05;
+      const gy = 0.08 * Math.cos(stepPhase * 0.5) + noise() * 0.05;
+      const gz = 0.05 * Math.sin(stepPhase * 0.5) + noise() * 0.05;
+
+      navEngine.handleOrientation(this.heading, 0, 0, true);
 
       navEngine.handleIMU({
         timestamp: now,
         accel: { x: ax, y: ay, z: az },
-        gyro: { x: noise(), y: noise(), z: noise() }
+        gyro: { x: gx, y: gy, z: gz },
       });
 
-      navEngine.handleOrientation(this.heading, 0, 0, true);
-
-      // GPS 1Hz update
-      if (this.gpsAvailable && now % 1000 < 20) {
+      // GPS 1Hz update (with realistic accuracy)
+      if (this.gpsAvailable && now % 1000 < 25) {
         navEngine.handleGPS({
           timestamp: now,
-          latitude: this.lat + (Math.random()-0.5)*0.0001, // add some gps noise
-          longitude: this.lon + (Math.random()-0.5)*0.0001,
-          accuracy: 5 + Math.random() * 5,
-          altitude: 10,
+          latitude: this.lat + (Math.random() - 0.5) * 0.00004,
+          longitude: this.lon + (Math.random() - 0.5) * 0.00004,
+          accuracy: 3.5 + Math.random() * 2.0,
+          altitude: 15,
           speed: this.speed,
-          heading: this.heading
+          heading: this.heading,
         });
       }
     }, 20); // 50Hz

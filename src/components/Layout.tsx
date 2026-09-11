@@ -1,5 +1,5 @@
 import { useNavStore } from '../store/useNavStore';
-import { Activity, Compass, Map, Settings, Wifi, WifiOff, Cpu, Crosshair } from 'lucide-react';
+import { Activity, Compass, Map, Settings, Wifi, WifiOff, Cpu, Crosshair, FlaskConical } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -61,6 +61,7 @@ export const Layout = ({ children, activeTab, setActiveTab }: any) => {
           <NavLink active={activeTab === 'sensors'} onClick={() => setActiveTab('sensors')} icon={Activity} label="Sensor Telemetry" />
           <NavLink active={activeTab === 'fusion'} onClick={() => setActiveTab('fusion')} icon={Cpu} label="Sensor Fusion" />
           <NavLink active={activeTab === 'diagnostics'} onClick={() => setActiveTab('diagnostics')} icon={Settings} label="Diagnostics" />
+          <NavLink active={activeTab === 'field-test'} onClick={() => setActiveTab('field-test')} icon={FlaskConical} label="Field Test Mode" />
         </nav>
         
         <div className="p-4 border-t border-border mt-auto">
@@ -167,6 +168,12 @@ export const Layout = ({ children, activeTab, setActiveTab }: any) => {
             onClick={() => setActiveTab('diagnostics')} 
             icon={Settings} 
             label="Diag" 
+          />
+          <MobileTabButton 
+            active={activeTab === 'field-test'} 
+            onClick={() => setActiveTab('field-test')} 
+            icon={FlaskConical} 
+            label="Test" 
           />
         </nav>
       </div>
