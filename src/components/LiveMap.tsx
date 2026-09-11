@@ -171,7 +171,7 @@ export const LiveMap = () => {
 
       {/* Map Legend Modal / Card */}
       {showLegend && (
-        <div className="absolute bottom-20 md:bottom-6 left-3 sm:left-6 z-10 bg-panel/95 backdrop-blur-md border border-border rounded-xl p-3 shadow-2xl max-w-[220px] pointer-events-auto text-xs">
+        <div className="absolute bottom-20 md:bottom-6 left-3 sm:left-6 z-10 bg-panel/95 backdrop-blur-md border border-border rounded-xl p-3 shadow-2xl max-w-55 pointer-events-auto text-xs">
           <div className="flex items-center justify-between pb-2 border-b border-border mb-2">
             <span className="font-bold text-[10px] tracking-wider text-muted uppercase">Map Legend</span>
             <button onClick={() => setShowLegend(false)} className="text-muted hover:text-white cursor-pointer">✕</button>
