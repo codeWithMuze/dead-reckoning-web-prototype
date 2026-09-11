@@ -69,15 +69,30 @@ export class SensorManager {
     // Prefer acceleration without gravity if available, otherwise fallback
     const acc = event.acceleration || event.accelerationIncludingGravity;
     if (!acc) return;
-    
+
+    // Use high-resolution event.timeStamp (relative to performance.timeOrigin)
+    const timestampMs = event.timeStamp && event.timeStamp > 0 
+      ? (typeof performance !== 'undefined' && performance.timeOrigin ? performance.timeOrigin + event.timeStamp : event.timeStamp)
+      : Date.now();
+
+    const rawAccel = { 
+      x: acc.x || 0, 
+      y: acc.y || 0, 
+      z: acc.z || 0 
+    };
+
+    // W3C rotationRate is in deg/s; convert to rad/s for kinematics: rad = deg * π / 180
+    const degToRad = Math.PI / 180;
+    const rawGyro = { 
+      x: (event.rotationRate?.alpha || 0) * degToRad, 
+      y: (event.rotationRate?.beta || 0) * degToRad, 
+      z: (event.rotationRate?.gamma || 0) * degToRad 
+    };
+
     navEngine.handleIMU({
-      timestamp: Date.now(),
-      accel: { x: acc.x || 0, y: acc.y || 0, z: acc.z || 0 },
-      gyro: { 
-        x: event.rotationRate?.alpha || 0, 
-        y: event.rotationRate?.beta || 0, 
-        z: event.rotationRate?.gamma || 0 
-      }
+      timestamp: timestampMs,
+      accel: rawAccel,
+      gyro: rawGyro
     });
   }
 

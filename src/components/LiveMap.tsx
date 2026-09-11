@@ -91,10 +91,17 @@ export const LiveMap = () => {
         {/* Current Estimated Position & Uncertainty */}
         {navState.estimatedPosition && (
           <>
+            {/* 2-Sigma Confidence Boundary */}
             <Circle 
               center={[navState.estimatedPosition.latitude, navState.estimatedPosition.longitude]} 
-              radius={navState.uncertainty || 2} 
-              pathOptions={{ fillColor: '#3b82f6', color: '#3b82f6', weight: 1.5, fillOpacity: 0.15 }}
+              radius={Math.max(2, navState.ekf?.uncertainty2Sigma || (navState.uncertainty * 2) || 4)} 
+              pathOptions={{ fillColor: '#3b82f6', color: '#60a5fa', weight: 1, dashArray: '3, 4', fillOpacity: 0.05 }}
+            />
+            {/* 1-Sigma Uncertainty */}
+            <Circle 
+              center={[navState.estimatedPosition.latitude, navState.estimatedPosition.longitude]} 
+              radius={Math.max(1, navState.ekf?.uncertainty1Sigma || navState.uncertainty || 2)} 
+              pathOptions={{ fillColor: '#3b82f6', color: '#3b82f6', weight: 1.5, fillOpacity: 0.18 }}
             />
             <Marker 
               position={[navState.estimatedPosition.latitude, navState.estimatedPosition.longitude]} 
@@ -105,7 +112,7 @@ export const LiveMap = () => {
       </MapContainer>
 
       {/* Responsive Telemetry HUD (Adaptive Header/Drawer on Mobile, Floating on Desktop) */}
-      <div className="absolute top-2 sm:top-4 right-2 sm:right-4 left-2 sm:left-auto z-10 sm:w-64 max-w-[calc(100vw-1rem)] flex flex-col pointer-events-auto">
+      <div className="absolute top-2 sm:top-4 right-2 sm:right-4 left-2 sm:left-auto z-10 sm:w-72 max-w-[calc(100vw-1rem)] flex flex-col pointer-events-auto">
         {/* Toggle Bar for Mobile */}
         <div className="flex items-center justify-between sm:hidden bg-panel/90 backdrop-blur border border-border rounded-lg px-3 py-1.5 mb-1.5 shadow-md">
           <span className="text-[10px] font-bold tracking-widest text-muted uppercase">Telemetry HUD</span>
@@ -120,11 +127,18 @@ export const LiveMap = () => {
 
         {/* HUD Metric Cards */}
         {hudExpanded && (
-          <div className="grid grid-cols-2 sm:grid-cols-1 gap-1.5 sm:gap-2">
+          <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
             <MetricCard label="SPEED" value={speed} unit="m/s" />
-            <MetricCard label="HEADING" value={heading} unit="°" />
-            <MetricCard label="UNCERTAINTY" value={uncertainty} unit="m" />
-            <MetricCard label="GPS ACCURACY" value={gpsAccuracy} unit="m" />
+            <MetricCard label="HEADING" value={`${heading}°`} unit={navState.headingType} />
+            <MetricCard label="EKF 1σ / 2σ" value={`${uncertainty}/${(navState.uncertainty2Sigma || Number(uncertainty) * 2).toFixed(1)}`} unit="m" />
+            <MetricCard label="STEPS (PDR)" value={navState.pdr?.stepCount ?? 0} unit={`${navState.pdr?.cadence?.toFixed(0) ?? 0} spm`} />
+            <MetricCard 
+              label="MOTION" 
+              value={navState.motionState} 
+              unit="" 
+              highlight={navState.motionState === 'WALKING' ? 'text-success' : navState.motionState === 'STATIONARY' ? 'text-primary' : 'text-muted'} 
+            />
+            <MetricCard label="GPS ACC" value={gpsAccuracy} unit="m" />
           </div>
         )}
       </div>
@@ -200,12 +214,12 @@ export const LiveMap = () => {
   );
 };
 
-const MetricCard = ({ label, value, unit }: { label: string, value: string | number, unit: string }) => (
-  <div className="bg-panel/90 backdrop-blur border border-border rounded-lg p-2.5 sm:p-3 shadow-lg flex items-center justify-between">
+const MetricCard = ({ label, value, unit, highlight }: { label: string, value: string | number, unit: string, highlight?: string }) => (
+  <div className="bg-panel/90 backdrop-blur border border-border rounded-lg p-2 sm:p-2.5 shadow-lg flex items-center justify-between">
     <span className="text-[9px] sm:text-[10px] text-muted font-semibold tracking-wider">{label}</span>
     <div className="font-mono flex items-baseline space-x-1">
-      <span className="text-white text-base sm:text-lg font-medium">{value}</span>
-      <span className="text-muted text-[10px] sm:text-xs">{unit}</span>
+      <span className={`text-sm sm:text-base font-medium ${highlight || 'text-white'}`}>{value}</span>
+      {unit && <span className="text-muted text-[10px] sm:text-xs">{unit}</span>}
     </div>
   </div>
 );

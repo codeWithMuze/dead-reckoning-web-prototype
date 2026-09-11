@@ -4,6 +4,7 @@ import { LiveMap } from './components/LiveMap';
 import { SensorsPage } from './pages/SensorsPage';
 import { DiagnosticsPage } from './pages/DiagnosticsPage';
 import { FusionPage } from './pages/FusionPage';
+import { FieldTestPage } from './pages/FieldTestPage';
 import { sensorManager } from './engine/SensorManager';
 import { demoManager } from './engine/DemoManager';
 import { Compass, Play, Presentation } from 'lucide-react';
@@ -96,6 +97,7 @@ function App() {
       {activeTab === 'sensors' && <SensorsPage />}
       {activeTab === 'fusion' && <FusionPage />}
       {activeTab === 'diagnostics' && <DiagnosticsPage />}
+      {activeTab === 'field-test' && <FieldTestPage />}
     </Layout>
   );
 }

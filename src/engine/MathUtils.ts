@@ -1,79 +1,86 @@
+// Earth radius in meters (WGS-84 mean equational radius)
+export const R_EARTH = 6378137;
+
 /**
  * Convert degrees to radians
  */
-export const degToRad = (deg: number) => deg * (Math.PI / 180);
+export const degToRad = (deg: number): number => deg * (Math.PI / 180);
 
 /**
- * Creates a rotation matrix from Euler angles (Z, X, Y ordering for phone axes)
- * alpha: Z axis (heading)
- * beta: X axis (pitch)
- * gamma: Y axis (roll)
+ * Convert radians to degrees
  */
-export const getRotationMatrix = (alpha: number, beta: number, gamma: number) => {
-  const a = degToRad(alpha);
-  const b = degToRad(beta);
-  const g = degToRad(gamma);
-
-  const cA = Math.cos(a);
-  const sA = Math.sin(a);
-  const cB = Math.cos(b);
-  const sB = Math.sin(b);
-  const cG = Math.cos(g);
-  const sG = Math.sin(g);
-
-  // Z-X-Y rotation matrix applied to column vectors
-  return [
-    [
-      cA * cG - sA * sB * sG,
-      -sA * cB,
-      cA * sG + sA * sB * cG
-    ],
-    [
-      sA * cG + cA * sB * sG,
-      cA * cB,
-      sA * sG - cA * sB * cG
-    ],
-    [
-      -cB * sG,
-      sB,
-      cB * cG
-    ]
-  ];
-};
+export const radToDeg = (rad: number): number => rad * (180 / Math.PI);
 
 /**
- * Multiply 3x3 matrix by 3x1 vector
+ * Converts Geodetic (Lat, Lon) into Local Tangent Plane (ENU: East, North in meters)
+ * relative to a fixed local origin (lat0, lon0).
  */
-export const multiplyMatrixVector = (matrix: number[][], vector: number[]) => {
-  return [
-    matrix[0][0] * vector[0] + matrix[0][1] * vector[1] + matrix[0][2] * vector[2],
-    matrix[1][0] * vector[0] + matrix[1][1] * vector[1] + matrix[1][2] * vector[2],
-    matrix[2][0] * vector[0] + matrix[2][1] * vector[1] + matrix[2][2] * vector[2]
-  ];
-};
+export function geodeticToENU(
+  latDeg: number,
+  lonDeg: number,
+  originLatDeg: number,
+  originLonDeg: number
+): { east: number; north: number } {
+  const dLatRad = degToRad(latDeg - originLatDeg);
+  const dLonRad = degToRad(lonDeg - originLonDeg);
+  const meanLatRad = degToRad((latDeg + originLatDeg) * 0.5);
 
-// Earth radius in meters
-const R_EARTH = 6378137;
+  const north = dLatRad * R_EARTH;
+  const east = dLonRad * R_EARTH * Math.cos(meanLatRad);
+
+  return { east, north };
+}
+
+/**
+ * Converts Local Tangent Plane (ENU: East, North in meters) back to Geodetic (Lat, Lon)
+ * relative to local origin (lat0, lon0).
+ */
+export function enuToGeodetic(
+  eastMeters: number,
+  northMeters: number,
+  originLatDeg: number,
+  originLonDeg: number
+): { latitude: number; longitude: number } {
+  const originLatRad = degToRad(originLatDeg);
+
+  const dLatDeg = radToDeg(northMeters / R_EARTH);
+  const dLonDeg = radToDeg(eastMeters / (R_EARTH * Math.cos(originLatRad)));
+
+  return {
+    latitude: originLatDeg + dLatDeg,
+    longitude: originLonDeg + dLonDeg,
+  };
+}
 
 /**
  * Updates latitude and longitude given a displacement in meters North/East
  */
 export const offsetPosition = (lat: number, lon: number, dn: number, de: number) => {
-  const dLat = dn / R_EARTH;
-  const dLon = de / (R_EARTH * Math.cos(Math.PI * lat / 180));
-
-  return {
-    latitude: lat + dLat * (180 / Math.PI),
-    longitude: lon + dLon * (180 / Math.PI)
-  };
+  return enuToGeodetic(de, dn, lat, lon);
 };
 
 /**
- * Simple 1D Kalman Filter update step
+ * Multiply 3x3 matrix by 3x1 vector
  */
-export const updateKF1D = (x: number, P: number, z: number, R: number) => {
-  const K = P / (P + R);
-  const xNew = x + K * (z - x);
-  const PNew = (1 - K) * P;
-  return { x: xNew, P: PNew };
+export const multiplyMatrixVector = (matrix: number[][], vector: number[]): number[] => {
+  return [
+    matrix[0][0] * vector[0] + matrix[0][1] * vector[1] + matrix[0][2] * vector[2],
+    matrix[1][0] * vector[0] + matrix[1][1] * vector[1] + matrix[1][2] * vector[2],
+    matrix[2][0] * vector[0] + matrix[2][1] * vector[1] + matrix[2][2] * vector[2],
+  ];
 };
+
+/**
+ * Calculates mean and standard deviation of an array of numbers
+ */
+export function calcStats(values: number[]): { mean: number; variance: number; std: number } {
+  if (values.length === 0) return { mean: 0, variance: 0, std: 0 };
+  const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+  const variance = values.reduce((sum, v) => sum + (v - mean) * (v - mean), 0) / (values.length > 1 ? values.length - 1 : 1);
+  return {
+    mean,
+    variance,
+    std: Math.sqrt(variance),
+  };
+}
+
