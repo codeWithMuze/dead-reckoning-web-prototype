@@ -112,11 +112,11 @@ export const Layout = ({ children, activeTab, setActiveTab }: any) => {
 
           {/* Center / Right Control Hub */}
           <div className="flex items-center space-x-1.5 sm:space-x-3 overflow-x-auto no-scrollbar">
-            {/* GLOBAL GPS INPUT CONTROL (Visible on all pages) */}
-            <div className="flex items-center bg-[#111114] border border-border/80 rounded-lg p-1 sm:px-2.5 sm:py-1 gap-1.5 sm:gap-2 shadow-inner">
-              {/* Receiver Hardware Status */}
+            {/* GLOBAL GPS INPUT CONTROL (Visible on all pages, mobile-optimized) */}
+            <div className="flex items-center bg-[#111114] border border-border/80 rounded-lg p-0.5 sm:px-2 sm:py-1 gap-1.5 shadow-inner">
+              {/* Receiver Hardware Status (Desktop/Tablet) */}
               <div className="hidden lg:flex flex-col text-right leading-tight pr-1.5 border-r border-border/60">
-                <span className="text-[8px] text-muted uppercase font-mono tracking-wider">GPS Receiver</span>
+                <span className="text-[8px] text-muted uppercase font-mono tracking-wider">Receiver</span>
                 <span className="text-[10px] font-mono text-gray-300">
                   {navState.gpsReceiver?.status === 'AVAILABLE' 
                     ? `AVAIL ${navState.gpsReceiver.accuracy ? `±${navState.gpsReceiver.accuracy.toFixed(1)}m` : ''}`
@@ -124,31 +124,36 @@ export const Layout = ({ children, activeTab, setActiveTab }: any) => {
                 </span>
               </div>
 
-              {/* Application Gate Label & Toggle */}
-              <div className="flex items-center space-x-1 sm:space-x-1.5">
-                <span className="text-[9px] sm:text-[10px] font-mono font-bold text-muted uppercase tracking-wider hidden xs:inline">
-                  GPS Input:
-                </span>
-                <button
-                  onClick={() => {
-                    if (gpsInputEnabled) {
-                      setConfirmModalOpen(true);
-                    } else {
-                      setGpsInputEnabled(true);
-                    }
-                  }}
+              {/* High-Visibility Interactive Toggle Switch */}
+              <button
+                onClick={() => {
+                  if (gpsInputEnabled) {
+                    setConfirmModalOpen(true);
+                  } else {
+                    setGpsInputEnabled(true);
+                  }
+                }}
+                className={cn(
+                  "flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-[10px] sm:text-[11px] font-mono font-bold transition-all cursor-pointer border select-none shadow-sm",
+                  gpsInputEnabled 
+                    ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/25 active:scale-95"
+                    : "bg-amber-500/20 border-amber-500/60 text-amber-300 hover:bg-amber-500/30 animate-pulse active:scale-95"
+                )}
+                aria-label="Toggle GPS Input (Simulate GPS Outage)"
+                title="Controls whether NaviSense accepts GPS measurements. Tap to simulate GPS outage."
+              >
+                <span 
                   className={cn(
-                    "flex items-center space-x-1.5 px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-[11px] font-mono font-semibold transition-all cursor-pointer border",
+                    "w-2 h-2 rounded-full flex-shrink-0", 
                     gpsInputEnabled 
-                      ? "bg-success/15 border-success/40 text-success hover:bg-success/25"
-                      : "bg-warning/20 border-warning/50 text-warning hover:bg-warning/30 animate-pulse"
-                  )}
-                  title="Controls whether NaviSense accepts GPS measurements. Does not change the phone's system Location Services."
-                >
-                  <span className={cn("w-1.5 h-1.5 rounded-full", gpsInputEnabled ? "bg-success" : "bg-warning")} />
-                  <span>{gpsInputEnabled ? 'ON' : 'OFF (TEST)'}</span>
-                </button>
-              </div>
+                      ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]" 
+                      : "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.9)]"
+                  )} 
+                />
+                <span className="tracking-tight whitespace-nowrap">
+                  {gpsInputEnabled ? 'GPS: ON' : 'GPS: OFF (TEST)'}
+                </span>
+              </button>
             </div>
 
             {/* GPS Lock Pill */}
