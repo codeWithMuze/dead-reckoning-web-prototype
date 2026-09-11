@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Polyline, Circle, Marker } from 'react-leaflet';
 import L from 'leaflet';
 import { useNavStore } from '../store/useNavStore';
-import { Plus, Minus, LocateFixed, Info, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Minus, LocateFixed, Info, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
 
 // Custom icons to avoid broken image links in Vite
 const createIcon = (color: string) => L.divIcon({
@@ -21,17 +21,30 @@ export const LiveMap = () => {
   const mapRef = useRef<L.Map>(null);
   const [hudExpanded, setHudExpanded] = useState(true);
   const [showLegend, setShowLegend] = useState(false);
+  const hasAutoCenteredRef = useRef(false);
 
+  // Auto-center ONCE upon acquiring real position (avoid repeatedly forcing center on every tick)
   useEffect(() => {
-    if (mapRef.current && navState.estimatedPosition) {
-      mapRef.current.setView([navState.estimatedPosition.latitude, navState.estimatedPosition.longitude]);
+    if (!navState.estimatedPosition) {
+      hasAutoCenteredRef.current = false;
+      return;
     }
-  }, [navState.estimatedPosition?.latitude, navState.estimatedPosition?.longitude]);
 
-  // Center map initially if position exists
-  const center: [number, number] = navState.estimatedPosition 
+    if (!hasAutoCenteredRef.current && mapRef.current) {
+      mapRef.current.setView(
+        [navState.estimatedPosition.latitude, navState.estimatedPosition.longitude],
+        18,
+        { animate: true }
+      );
+      hasAutoCenteredRef.current = true;
+    }
+  }, [navState.estimatedPosition]);
+
+  // Fallback initial map center (used only as a visual placeholder before first fix)
+  const initialCenter: [number, number] = navState.estimatedPosition 
     ? [navState.estimatedPosition.latitude, navState.estimatedPosition.longitude]
-    : [40.7128, -74.0060]; // Default SF
+    : [20.0, 0.0];
+  const initialZoom = navState.estimatedPosition ? 18 : 2;
 
   const handleZoomIn = () => {
     if (mapRef.current) mapRef.current.zoomIn();
@@ -43,11 +56,55 @@ export const LiveMap = () => {
 
   const handleRecenter = () => {
     if (mapRef.current && navState.estimatedPosition) {
-      mapRef.current.setView([navState.estimatedPosition.latitude, navState.estimatedPosition.longitude], 18, {
-        animate: true,
-      });
+      mapRef.current.setView(
+        [navState.estimatedPosition.latitude, navState.estimatedPosition.longitude], 
+        18, 
+        { animate: true }
+      );
     }
   };
+
+  // Derive Live GPS Status Indicator
+  let gpsStatusLabel: 'WAITING FOR GPS' | 'GPS ACQUIRED' | 'GPS DEGRADED' | 'GPS DENIED';
+  let statusBadgeStyle = '';
+  let statusDotStyle = '';
+
+  const isDenied = 
+    navState.gpsReceiver.status === 'UNAVAILABLE' ||
+    navState.mode === 'GPS_DENIED' ||
+    !navState.gpsInputEnabled;
+
+  const isDegraded = 
+    navState.mode === 'GPS_DEGRADED' ||
+    (navState.gpsActive && (navState.gps?.accuracy ?? 0) > 15.0);
+
+  const isAcquired = 
+    navState.gpsActive && (navState.mode === 'GPS_AIDED' || navState.mode === 'REACQUIRING') && !isDegraded;
+
+  if (isDenied) {
+    gpsStatusLabel = 'GPS DENIED';
+    statusBadgeStyle = 'bg-rose-500/20 border-rose-500/40 text-rose-300';
+    statusDotStyle = 'bg-rose-500';
+  } else if (isDegraded) {
+    gpsStatusLabel = 'GPS DEGRADED';
+    statusBadgeStyle = 'bg-amber-500/20 border-amber-500/40 text-amber-300';
+    statusDotStyle = 'bg-amber-500';
+  } else if (isAcquired) {
+    gpsStatusLabel = 'GPS ACQUIRED';
+    statusBadgeStyle = 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300';
+    statusDotStyle = 'bg-emerald-400 animate-pulse';
+  } else {
+    gpsStatusLabel = 'WAITING FOR GPS';
+    statusBadgeStyle = 'bg-sky-500/20 border-sky-500/40 text-sky-300';
+    statusDotStyle = 'bg-sky-400 animate-ping';
+  }
+
+  // User-facing alerts for GPS permissions, timeout, or errors
+  const showGpsAlert = !navState.isDemoMode && (
+    navState.gpsReceiver.status === 'UNAVAILABLE' ||
+    (navState.gpsReceiver.status === 'WAITING' && navState.gpsReceiver.errorMessage !== null) ||
+    (navState.gpsReceiver.status === 'ERROR' && navState.gpsReceiver.errorMessage !== null)
+  );
 
   const speed = (Math.sqrt(navState.estimatedVelocity.vn ** 2 + navState.estimatedVelocity.ve ** 2)).toFixed(2);
   const heading = navState.heading.toFixed(0);
@@ -58,8 +115,8 @@ export const LiveMap = () => {
   return (
     <div className="w-full h-full relative overflow-hidden flex flex-col">
       <MapContainer 
-        center={center} 
-        zoom={18} 
+        center={initialCenter} 
+        zoom={initialZoom} 
         scrollWheelZoom={true} 
         className="w-full h-full z-0 flex-1"
         ref={mapRef}
@@ -116,8 +173,38 @@ export const LiveMap = () => {
         )}
       </MapContainer>
 
+      {/* Top Left: Live GPS Status Badge & Critical User Alerts */}
+      <div className="absolute top-2 sm:top-4 left-2 sm:left-4 z-10 flex flex-col space-y-2 pointer-events-auto max-w-[calc(100vw-1rem)] sm:max-w-xs">
+        {/* Live GPS Status Indicator */}
+        <div className={`inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg border backdrop-blur-md shadow-lg self-start ${statusBadgeStyle}`}>
+          <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotStyle}`} />
+          <span className="font-mono text-[11px] sm:text-xs font-bold tracking-wider">{gpsStatusLabel}</span>
+        </div>
+
+        {/* User-facing alerts for GPS permission denied, timeout, or errors */}
+        {showGpsAlert && navState.gpsReceiver.errorMessage && (
+          <div className={`flex items-start space-x-2.5 p-3 rounded-xl border backdrop-blur-md shadow-2xl transition-all ${
+            navState.gpsReceiver.status === 'UNAVAILABLE'
+              ? 'bg-rose-950/90 border-rose-500/40 text-rose-200'
+              : 'bg-amber-950/90 border-amber-500/40 text-amber-200'
+          }`}>
+            <AlertTriangle className={`w-4 h-4 mt-0.5 shrink-0 ${
+              navState.gpsReceiver.status === 'UNAVAILABLE' ? 'text-rose-400' : 'text-amber-400'
+            }`} />
+            <div className="text-xs leading-relaxed font-sans">
+              <p className="font-semibold">{navState.gpsReceiver.errorMessage}</p>
+              {navState.gpsReceiver.status === 'UNAVAILABLE' && (
+                <p className="text-[11px] text-gray-300 mt-1">
+                  Please enable Location Services in your browser and device settings to track your real position.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Responsive Telemetry HUD (Adaptive Header/Drawer on Mobile, Floating on Desktop) */}
-      <div className="absolute top-2 sm:top-4 right-2 sm:right-4 left-2 sm:left-auto z-10 sm:w-72 max-w-[calc(100vw-1rem)] flex flex-col pointer-events-auto">
+      <div className="absolute top-12 sm:top-4 right-2 sm:right-4 left-2 sm:left-auto z-10 sm:w-72 max-w-[calc(100vw-1rem)] flex flex-col pointer-events-auto">
         {/* Toggle Bar for Mobile */}
         <div className="flex items-center justify-between sm:hidden bg-panel/90 backdrop-blur border border-border rounded-lg px-3 py-1.5 mb-1.5 shadow-md">
           <span className="text-[10px] font-bold tracking-widest text-muted uppercase">Telemetry HUD</span>

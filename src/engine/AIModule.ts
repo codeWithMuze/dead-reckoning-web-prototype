@@ -6,12 +6,12 @@
  * and session-labeled training directly to the live navigation pipeline.
  */
 
-import { NeuralRegressor } from './ml/NeuralRegressor';
-import { FeatureExtractor } from './ml/FeatureExtractor';
-import { PRETRAINED_STRIDE_MODEL } from './ml/pretrained_model';
-import type { FeatureVector, MLPModelData, MLPrediction, MLTelemetry, DatasetSample, TrainingConfig, TrainingProgress } from './ml/MLPTypes';
+import { NeuralRegressor } from './ml/NeuralRegressor.ts';
+import { FeatureExtractor } from './ml/FeatureExtractor.ts';
+import { PRETRAINED_STRIDE_MODEL } from './ml/pretrained_model.ts';
+import type { FeatureVector, MLPModelData, MLPrediction, MLTelemetry, DatasetSample, TrainingConfig, TrainingProgress } from './ml/MLPTypes.ts';
 import type { SensorSample, StepEvent } from '../types';
-import { useNavStore } from '../store/useNavStore';
+import { useNavStore } from '../store/useNavStore.ts';
 
 const STORAGE_MODEL_KEY = 'navisense_ml_model_v1';
 const STORAGE_DATASET_KEY = 'navisense_ml_dataset_v1';

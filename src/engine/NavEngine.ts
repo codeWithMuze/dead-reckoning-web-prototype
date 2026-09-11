@@ -1,13 +1,13 @@
-import { useNavStore } from '../store/useNavStore';
-import { enuToGeodetic, geodeticToENU } from './MathUtils';
-import { AttitudeEstimator } from './AttitudeEstimator';
-import { calibrationManager } from './CalibrationManager';
-import { MotionClassifier } from './MotionClassifier';
-import { StepDetector } from './StepDetector';
-import { NavigationEKF } from './NavigationEKF';
-import { sessionRecorder } from './SessionRecorder';
+import { useNavStore } from '../store/useNavStore.ts';
+import { enuToGeodetic, geodeticToENU } from './MathUtils.ts';
+import { AttitudeEstimator } from './AttitudeEstimator.ts';
+import { calibrationManager } from './CalibrationManager.ts';
+import { MotionClassifier } from './MotionClassifier.ts';
+import { StepDetector } from './StepDetector.ts';
+import { NavigationEKF } from './NavigationEKF.ts';
+import { sessionRecorder } from './SessionRecorder.ts';
 import { fieldTestManager } from './FieldTestManager.ts';
-import { aiModule } from './AIModule';
+import { aiModule } from './AIModule.ts';
 import type { SensorSample, GPSMeasurement, Position2D, Vector3D } from '../types';
 
 export class NavEngine {
@@ -42,6 +42,18 @@ export class NavEngine {
 
   public stop() {
     this.isRunning = false;
+  }
+
+  public reset() {
+    this.origin = null;
+    this.pdrLocalPos = { east: 0, north: 0 };
+    this.lastUpdateTimestamp = 0;
+    this.stepDetector.reset();
+    this.ekf.reset(0, 0);
+  }
+
+  public getOrigin(): Position2D | null {
+    return this.origin;
   }
 
   public setWeinbergK(k: number) {
@@ -91,14 +103,14 @@ export class NavEngine {
   public handleGPS(gps: GPSMeasurement) {
     const store = useNavStore.getState();
     if (!store.gpsInputEnabled) return;
-    const currentMode = store.navState.mode;
 
-    // First GPS Fix establishes the session origin
+    // First GPS Fix establishes the session origin and transitions mode from IDLE to GPS_AIDED
     if (!this.origin) {
       this.resetOrigin(gps.latitude, gps.longitude);
     }
 
-    if (currentMode === 'IDLE' || currentMode === 'CALIBRATING') return;
+    const currentMode = useNavStore.getState().navState.mode;
+    if (currentMode === 'CALIBRATING') return;
 
     // Convert GPS Geodetic into Local ENU Metric Coordinates
     const origin = this.origin!;

@@ -7,6 +7,7 @@ import { FusionPage } from './pages/FusionPage';
 import { FieldTestPage } from './pages/FieldTestPage';
 import { sensorManager } from './engine/SensorManager';
 import { demoManager } from './engine/DemoManager';
+import { navEngine } from './engine/NavEngine';
 import { Compass, Play, Presentation } from 'lucide-react';
 import { useNavStore } from './store/useNavStore';
 
@@ -16,14 +17,28 @@ function App() {
   const { navState } = useNavStore();
 
   const handleStartLive = async () => {
-    const granted = await sensorManager.requestPermissions();
-    if (granted || 'geolocation' in navigator) {
-      sensorManager.start();
-    }
+    demoManager.stop();
+    sensorManager.stop();
+    navEngine.reset();
+    useNavStore.getState().resetTrails();
+    useNavStore.getState().updateNavState({
+      isDemoMode: false,
+      mode: 'IDLE',
+      origin: null,
+      gps: null,
+      estimatedPosition: null,
+      gpsActive: false,
+    });
+
+    await sensorManager.requestPermissions();
+    sensorManager.start();
     setStarted(true);
   };
 
   const handleStartDemo = () => {
+    sensorManager.stop();
+    navEngine.reset();
+    useNavStore.getState().resetTrails();
     demoManager.start();
     setStarted(true);
   };

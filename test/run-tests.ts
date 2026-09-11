@@ -29,6 +29,8 @@ import { NeuralRegressor } from '../src/engine/ml/NeuralRegressor.ts';
 import { PRETRAINED_STRIDE_MODEL } from '../src/engine/ml/pretrained_model.ts';
 import type { FeatureVector, DatasetSample } from '../src/engine/ml/MLPTypes.ts';
 import type { Vector3D } from '../src/types/index.ts';
+import { navEngine } from '../src/engine/NavEngine.ts';
+import { useNavStore } from '../src/store/useNavStore.ts';
 
 let passed = 0;
 let failed = 0;
@@ -638,6 +640,112 @@ assert(baselineErrPct === 9.0, 'TEST-ML-01: Baseline distance error is 9.0% (4.5
 assert(mlErrPct === 1.6, 'TEST-ML-01: ML adaptive distance error is 1.6% (0.8m on 50m walk)');
 assert(Math.round(gaitImprovementPct) === 82, 'TEST-ML-01: Gait error reduction is ~82%');
 assert(mlErrPct <= 10.0 || gaitImprovementPct >= 0, 'TEST-ML-01: Correctly satisfies PASS criteria');
+
+// -------------------------------------------------------------------
+// 10. Live Session Initial GPS Acquisition & Architecture Lifecycle
+// -------------------------------------------------------------------
+console.log('\n--- 10. Live Session Initial GPS Acquisition & Architecture Lifecycle ---');
+
+// 10.1 Reset engine state
+navEngine.reset();
+useNavStore.getState().resetTrails();
+useNavStore.getState().updateNavState({
+  mode: 'IDLE',
+  origin: null,
+  gps: null,
+  estimatedPosition: null,
+  gpsActive: false,
+  isDemoMode: false,
+});
+
+assert(navEngine.getOrigin() === null, 'Test 10.1: Engine reset clears origin to null');
+assert(useNavStore.getState().navState.mode === 'IDLE', 'Test 10.1.2: Initial mode before GPS fix is IDLE');
+assert(useNavStore.getState().navState.estimatedPosition === null, 'Test 10.1.3: Initial estimatedPosition is null (no fake SF placeholder)');
+assert(useNavStore.getState().gpsTrail.length === 0, 'Test 10.1.4: GPS trail is empty before fix');
+
+// 10.2 First GPS Fix establishes origin and transitions IDLE -> GPS_AIDED
+const initialFixCoord = {
+  timestamp: 1700000000000,
+  latitude: 28.6139, // New Delhi
+  longitude: 77.2090,
+  accuracy: 4.5,
+  altitude: 215,
+  speed: 0.0,
+  heading: 0,
+};
+
+navEngine.handleGPS(initialFixCoord);
+
+const postFirstFixStore = useNavStore.getState();
+assert(navEngine.getOrigin() !== null, 'Test 10.2: First GPS fix establishes navigation origin');
+assertNear(navEngine.getOrigin()!.latitude, 28.6139, 1e-4, 'Test 10.2.2: Established origin latitude matches initial fix');
+assertNear(navEngine.getOrigin()!.longitude, 77.2090, 1e-4, 'Test 10.2.3: Established origin longitude matches initial fix');
+assert(postFirstFixStore.navState.mode === 'GPS_AIDED', 'Test 10.2.4: First GPS fix properly transitions mode from IDLE to GPS_AIDED');
+assert(postFirstFixStore.navState.gpsActive === true, 'Test 10.2.5: First GPS fix sets gpsActive = true');
+assert(postFirstFixStore.navState.estimatedPosition !== null, 'Test 10.2.6: estimatedPosition is populated on first fix');
+assertNear(postFirstFixStore.navState.estimatedPosition!.latitude, 28.6139, 1e-4, 'Test 10.2.7: estimatedPosition matches real GPS latitude');
+assertNear(postFirstFixStore.navState.estimatedPosition!.longitude, 77.2090, 1e-4, 'Test 10.2.8: estimatedPosition matches real GPS longitude');
+assert(postFirstFixStore.gpsTrail.length === 1, 'Test 10.2.9: First GPS fix is not discarded and added to gpsTrail');
+assert(postFirstFixStore.fusedTrail.length === 1, 'Test 10.2.10: First GPS fix is added to fusedTrail');
+
+// 10.3 GPS Degraded mode on high inaccuracy (> 15m)
+const degradedFixCoord = {
+  timestamp: 1700000001000,
+  latitude: 28.61395,
+  longitude: 77.20905,
+  accuracy: 25.0, // degraded accuracy
+  altitude: 215,
+  speed: 0.5,
+  heading: 45,
+};
+navEngine.handleGPS(degradedFixCoord);
+assert(useNavStore.getState().navState.mode === 'GPS_DEGRADED', 'Test 10.3: Fix with accuracy > 15m transitions to GPS_DEGRADED');
+
+// 10.4 GPS Error & Permission Denied Handling
+useNavStore.getState().updateGPSReceiver({
+  status: 'UNAVAILABLE',
+  errorMessage: 'Location permission is required for Live Session.',
+});
+const deniedReceiver = useNavStore.getState().navState.gpsReceiver;
+assert(deniedReceiver.status === 'UNAVAILABLE', 'Test 10.4: Permission denied sets gpsReceiver.status = UNAVAILABLE');
+assert(deniedReceiver.errorMessage === 'Location permission is required for Live Session.', 'Test 10.4.2: User-facing permission message set correctly');
+
+// 10.5 GPS Timeout Handling
+useNavStore.getState().updateGPSReceiver({
+  status: 'WAITING',
+  errorMessage: 'Waiting for GPS location. Please enable Location Services and move to an area with better GPS visibility.',
+});
+const timeoutReceiver = useNavStore.getState().navState.gpsReceiver;
+assert(timeoutReceiver.status === 'WAITING', 'Test 10.5: Timeout sets gpsReceiver.status = WAITING');
+assert(timeoutReceiver.errorMessage?.includes('Waiting for GPS location') === true, 'Test 10.5.2: User-facing timeout message set correctly');
+
+// 10.6 Refresh and Start Another Live Session at a Different Location
+navEngine.reset();
+useNavStore.getState().resetTrails();
+useNavStore.getState().updateNavState({
+  mode: 'IDLE',
+  origin: null,
+  gps: null,
+  estimatedPosition: null,
+  gpsActive: false,
+  isDemoMode: false,
+});
+
+const secondSessionFix = {
+  timestamp: 1700000005000,
+  latitude: 51.5074, // London
+  longitude: -0.1278,
+  accuracy: 3.0,
+  altitude: 15,
+  speed: 0.0,
+  heading: 0,
+};
+navEngine.handleGPS(secondSessionFix);
+
+const secondSessionStore = useNavStore.getState();
+assertNear(secondSessionStore.navState.estimatedPosition!.latitude, 51.5074, 1e-4, 'Test 10.6: New session centers on new location (London)');
+assertNear(secondSessionStore.navState.estimatedPosition!.longitude, -0.1278, 1e-4, 'Test 10.6.2: New session centers on new longitude');
+assert(secondSessionStore.navState.mode === 'GPS_AIDED', 'Test 10.6.3: Second session properly transitions to GPS_AIDED');
 
 // -------------------------------------------------------------------
 // SUMMARY

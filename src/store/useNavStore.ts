@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { NavigationState, CalibrationData, SensorSample, ModelPrediction, PDRState, EKFTelemetry, DebugTelemetry } from '../types';
-import { IDENTITY_QUATERNION } from '../engine/Quaternion';
-import { calibrationManager } from '../engine/CalibrationManager';
+import { IDENTITY_QUATERNION } from '../engine/Quaternion.ts';
+import { calibrationManager } from '../engine/CalibrationManager.ts';
 
 interface NavStore {
   navState: NavigationState;
@@ -105,6 +105,7 @@ const initialNavState: NavigationState = {
     status: 'WAITING',
     accuracy: null,
     lastHardwareFixTime: null,
+    errorMessage: null,
   },
   mlEnabled: false,
   mlTelemetry: initialMLTelemetry,

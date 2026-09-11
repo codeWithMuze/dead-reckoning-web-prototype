@@ -39,6 +39,7 @@ export interface GPSReceiverInfo {
   status: 'AVAILABLE' | 'WAITING' | 'ERROR' | 'UNAVAILABLE';
   accuracy: number | null;
   lastHardwareFixTime: number | null;
+  errorMessage?: string | null;
 }
 
 export interface Position2D {
