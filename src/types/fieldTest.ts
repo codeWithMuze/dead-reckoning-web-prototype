@@ -8,16 +8,17 @@ export type TestId =
   | 'TEST-07'
   | 'TEST-08'
   | 'TEST-09'
-  | 'TEST-10';
+  | 'TEST-10'
+  | 'TEST-ML-01';
 
 export type TestStatus = 'IDLE' | 'RUNNING' | 'PAUSED' | 'COMPLETED';
 
-export type OutagePhase = 'NONE' | 'BASELINE_LOCKED' | 'OUTAGE_COASTING' | 'REACQUIRED';
+export type OutagePhase = 'NONE' | 'BASELINE_LOCKED' | 'OUTAGE_COASTING' | 'REACQUIRING' | 'REACQUIRED';
 
 export interface TestDefinition {
   id: TestId;
   name: string;
-  category: 'CALIBRATION' | 'STATIONARY' | 'PDR_STEPS' | 'PDR_DISTANCE' | 'TRAJECTORY' | 'GPS_RESILIENCE';
+  category: 'CALIBRATION' | 'STATIONARY' | 'PDR_STEPS' | 'PDR_DISTANCE' | 'TRAJECTORY' | 'GPS_RESILIENCE' | 'ML_ADAPTIVE';
   description: string;
   physicalInstructions: string;
   groundTruthPrompts: {
@@ -68,6 +69,9 @@ export interface MeasuredTelemetry {
   uncertaintyBeforeReacquisitionM?: number;
   uncertaintyAfterReacquisitionM?: number;
   outageType?: 'APPLICATION_INPUT_DISABLED' | 'PHYSICAL_GNSS_LOSS';
+  mlBaselineDistanceMeters?: number;
+  mlCorrectedDistanceMeters?: number;
+  mlFallbackCount?: number;
 }
 
 export interface CalculatedErrors {
@@ -75,6 +79,9 @@ export interface CalculatedErrors {
   stepAccuracyPct?: number; // max(0, 1 - err/true) * 100
   distanceErrorMeters?: number;
   distanceErrorPct?: number;
+  mlDistanceErrorMeters?: number;
+  mlDistanceErrorPct?: number;
+  mlImprovementPct?: number;
   finalDisplacementErrorMeters?: number; // FDE
   driftRateMPerMin?: number;
   inertialDriftMPerMin?: number; // Drift rate from pure PDR/inertial displacement

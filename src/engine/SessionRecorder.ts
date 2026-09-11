@@ -32,6 +32,10 @@ export class SessionRecorder {
     return this.recordedFrames.length;
   }
 
+  public getRecordedFrames(): SessionRecordFrame[] {
+    return [...this.recordedFrames];
+  }
+
   public clear() {
     this.recordedFrames = [];
   }
@@ -86,6 +90,8 @@ export class SessionRecorder {
       'motion_state',
       'step_number',
       'stride_m',
+      'ml_correction_factor',
+      'ml_corrected_stride',
       'pdr_east_m',
       'pdr_north_m',
       'ekf_east_m',
@@ -114,6 +120,8 @@ export class SessionRecorder {
       f.motionState,
       f.stepEvent ? f.stepEvent.stepNumber : '',
       f.stepEvent ? f.stepEvent.strideLength : '',
+      f.mlPrediction ? f.mlPrediction.correctionFactor : '',
+      f.mlPrediction ? f.mlPrediction.correctedStride : '',
       f.pdrPos.east,
       f.pdrPos.north,
       f.ekfPos.east,
@@ -127,6 +135,63 @@ export class SessionRecorder {
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', url);
     downloadAnchor.setAttribute('download', `navisense_session_${Date.now()}.csv`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  public exportMLFeaturesCSV() {
+    const stepFrames = this.recordedFrames.filter((f) => f.stepEvent !== null && f.mlPrediction !== null);
+    if (stepFrames.length === 0) {
+      alert('No detected step features recorded in this session.');
+      return;
+    }
+
+    const headers = [
+      'timestamp',
+      'step_number',
+      'cadence',
+      'accel_mean',
+      'accel_var',
+      'accel_swing',
+      'gyro_mean',
+      'gyro_var',
+      'step_interval_s',
+      'baseline_stride_m',
+      'ml_correction_factor',
+      'ml_corrected_stride_m',
+      'ml_confidence',
+      'is_fallback',
+    ];
+
+    const rows = stepFrames.map((f) => {
+      const feat = f.mlPrediction!.features;
+      return [
+        f.timestamp,
+        f.stepEvent!.stepNumber,
+        feat.cadence,
+        feat.accelMagnitudeMean,
+        feat.accelMagnitudeVar,
+        feat.accelSwing,
+        feat.gyroMagnitudeMean,
+        feat.gyroMagnitudeVar,
+        feat.stepIntervalSec,
+        feat.baselineWeinbergStride,
+        f.mlPrediction!.correctionFactor,
+        f.mlPrediction!.correctedStride,
+        f.mlPrediction!.confidence,
+        f.mlPrediction!.isFallback ? 1 : 0,
+      ];
+    });
+
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute('href', url);
+    downloadAnchor.setAttribute('download', `navisense_ml_features_${Date.now()}.csv`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();

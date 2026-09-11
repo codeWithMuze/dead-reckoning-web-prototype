@@ -155,4 +155,9 @@ export class StepDetector {
       displacement: { dE, dN },
     };
   }
+
+  public adjustLastStepStride(newStride: number, oldBaselineStride: number): void {
+    this.totalDistanceMeters += (newStride - oldBaselineStride);
+    if (this.totalDistanceMeters < 0) this.totalDistanceMeters = 0;
+  }
 }

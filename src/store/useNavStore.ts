@@ -12,7 +12,11 @@ interface NavStore {
   drTrail: [number, number][];   // PDR trajectory
   fusedTrail: [number, number][]; // EKF trajectory
   gpsInputEnabled: boolean;
+  mlEnabled: boolean;
+  mlTelemetry: import('../types').MLTelemetry;
   setGpsInputEnabled: (enabled: boolean) => void;
+  setMLEnabled: (enabled: boolean) => void;
+  updateMLTelemetry: (partial: Partial<import('../types').MLTelemetry>) => void;
   updateGPSReceiver: (info: Partial<import('../types').GPSReceiverInfo>) => void;
   updateNavState: (partial: Partial<NavigationState>) => void;
   updateCalibration: (cal: CalibrationData) => void;
@@ -26,6 +30,20 @@ interface NavStore {
   addFusedPoint: (lat: number, lon: number) => void;
   resetTrails: () => void;
 }
+
+const initialMLTelemetry: import('../types').MLTelemetry = {
+  mlEnabled: false,
+  status: 'STANDBY',
+  modelName: 'NaviSense-MLP-AdaptiveStride',
+  correctionFactor: 1.0,
+  baselineStride: 0.70,
+  correctedStride: 0.70,
+  confidence: 0.95,
+  lastInferenceMs: 0.05,
+  totalPredictions: 0,
+  fallbackCount: 0,
+  recentPrediction: null,
+};
 
 const initialPDR: PDRState = {
   stepCount: 0,
@@ -88,6 +106,8 @@ const initialNavState: NavigationState = {
     accuracy: null,
     lastHardwareFixTime: null,
   },
+  mlEnabled: false,
+  mlTelemetry: initialMLTelemetry,
   pdr: initialPDR,
   ekf: initialEKF,
   debug: initialDebug,
@@ -102,6 +122,8 @@ export const useNavStore = create<NavStore>((set) => ({
   drTrail: [],
   fusedTrail: [],
   gpsInputEnabled: true,
+  mlEnabled: false,
+  mlTelemetry: initialMLTelemetry,
   setGpsInputEnabled: (enabled) =>
     set((state) => ({
       gpsInputEnabled: enabled,
@@ -110,6 +132,35 @@ export const useNavStore = create<NavStore>((set) => ({
         gpsInputEnabled: enabled,
       },
     })),
+  setMLEnabled: (enabled) =>
+    set((state) => ({
+      mlEnabled: enabled,
+      mlTelemetry: {
+        ...state.mlTelemetry,
+        mlEnabled: enabled,
+        status: enabled ? 'ACTIVE' : 'STANDBY',
+      },
+      navState: {
+        ...state.navState,
+        mlEnabled: enabled,
+        mlTelemetry: {
+          ...state.mlTelemetry,
+          mlEnabled: enabled,
+          status: enabled ? 'ACTIVE' : 'STANDBY',
+        },
+      },
+    })),
+  updateMLTelemetry: (partial) =>
+    set((state) => {
+      const updated = { ...state.mlTelemetry, ...partial };
+      return {
+        mlTelemetry: updated,
+        navState: {
+          ...state.navState,
+          mlTelemetry: updated,
+        },
+      };
+    }),
   updateGPSReceiver: (info) =>
     set((state) => ({
       navState: {

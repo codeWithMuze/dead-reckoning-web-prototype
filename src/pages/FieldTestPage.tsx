@@ -91,6 +91,11 @@ export const FieldTestPage: React.FC = () => {
       setGtDistance('');
       setGtSteps('');
       setGtHeading('');
+    } else if (selectedTestId === 'TEST-ML-01') {
+      setGtDistance('20.0');
+      setGtSteps('');
+      setGtHeading('0');
+      setGtDuration('30');
     }
   }, [selectedTestId]);
 
@@ -808,6 +813,55 @@ export const FieldTestPage: React.FC = () => {
             </div>
           )}
 
+          {/* ML Adaptive vs Baseline PDR A/B Banner */}
+          {(latestRecord.testId === 'TEST-ML-01' || latestRecord.errors.mlImprovementPct !== undefined) && (
+            <div className="bg-background/80 border border-purple-500/30 rounded-xl p-3 font-mono text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-purple-400 font-bold block uppercase tracking-wider text-[10px]">
+                  On-Device ML vs Deterministic Baseline A/B Comparison
+                </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                  SIH 26168 AI/ML Engine
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] pt-1">
+                <div className="p-2.5 rounded bg-black/30 border border-border/50 space-y-1">
+                  <span className="text-muted block text-[10px]">Baseline Weinberg PDR:</span>
+                  <span className="font-bold text-white text-sm">
+                    {latestRecord.measured.mlBaselineDistanceMeters ?? latestRecord.measured.distanceMeters} m
+                  </span>
+                  <div className="text-[10px] text-gray-400">
+                    Error: <span className="font-semibold text-warning">{latestRecord.errors.distanceErrorPct ?? '---'}%</span> ({latestRecord.errors.distanceErrorMeters ?? '---'}m)
+                  </div>
+                </div>
+                <div className="p-2.5 rounded bg-purple-950/20 border border-purple-500/40 space-y-1">
+                  <span className="text-purple-300 block text-[10px] font-semibold">ML Adaptive Stride PDR:</span>
+                  <span className="font-bold text-success text-sm">
+                    {latestRecord.measured.mlCorrectedDistanceMeters ?? latestRecord.measured.distanceMeters} m
+                  </span>
+                  <div className="text-[10px] text-gray-300">
+                    Error: <span className="font-semibold text-success">{latestRecord.errors.mlDistanceErrorPct ?? latestRecord.errors.distanceErrorPct}%</span> ({latestRecord.errors.mlDistanceErrorMeters ?? latestRecord.errors.distanceErrorMeters}m)
+                  </div>
+                </div>
+                <div className="p-2.5 rounded bg-black/30 border border-border/50 space-y-1">
+                  <span className="text-muted block text-[10px]">Error Reduction:</span>
+                  <span className={`font-bold text-sm ${
+                    (latestRecord.errors.mlImprovementPct ?? 0) >= 0 ? 'text-success' : 'text-danger'
+                  }`}>
+                    {(latestRecord.errors.mlImprovementPct ?? 0) >= 0 ? '+' : ''}
+                    {latestRecord.errors.mlImprovementPct ?? 0}%
+                  </span>
+                  <div className="text-[10px] text-gray-400">
+                    Fallbacks: <span className="text-white font-mono">{latestRecord.measured.mlFallbackCount || 0}</span>
+                  </div>
+                </div>
+              </div>
+              <p className="text-[10px] text-gray-400 pt-0.5 leading-relaxed">
+                Adaptive error correction dynamically standardizes 8 inertial gait features at 50Hz and multiplies Weinberg baseline stride by neural factor c ∈ [0.70, 1.30].
+              </p>
+            </div>
+          )}
+
           <div className="text-[11px] font-mono text-muted bg-background/40 p-2.5 rounded-lg border border-border flex justify-between items-center">
             <span>Pass Rule: <strong>{latestRecord.passCriteria}</strong></span>
             <span>Recorded: {latestRecord.formattedDate}</span>
@@ -937,6 +991,10 @@ export const FieldTestPage: React.FC = () => {
                         <span className="text-success">Bias: {rec.measured.gyroBiasNorm ?? 0} rad/s</span>
                       ) : rec.testId === 'TEST-02' ? (
                         <span className="text-success">Speed: {rec.measured.maxSpeedMps} m/s</span>
+                      ) : rec.testId === 'TEST-ML-01' ? (
+                        <span className="text-purple-400 font-semibold">
+                          ML: {rec.errors.mlDistanceErrorPct ?? rec.errors.distanceErrorPct}% err {rec.errors.mlImprovementPct !== undefined ? `(${rec.errors.mlImprovementPct >= 0 ? `+${rec.errors.mlImprovementPct}%` : `${rec.errors.mlImprovementPct}%`})` : ''}
+                        </span>
                       ) : rec.errors.stepAccuracyPct !== undefined ? (
                         <span className="text-success">{rec.errors.stepAccuracyPct}% acc</span>
                       ) : rec.errors.distanceErrorPct !== undefined ? (

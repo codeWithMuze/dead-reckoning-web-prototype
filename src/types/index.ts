@@ -122,6 +122,7 @@ export interface SessionRecordFrame {
   heading: number;
   motionState: MotionState;
   stepEvent: StepEvent | null;
+  mlPrediction?: import('../engine/ml/MLPTypes').MLPrediction | null;
   pdrPos: { east: number; north: number };
   ekfPos: { east: number; north: number };
 }
@@ -132,6 +133,8 @@ export interface ModelPrediction {
   suggestedCorrection: { dx: number; dy: number };
   motionState: MotionState;
 }
+
+export type { MLTelemetry, MLPrediction, FeatureVector } from '../engine/ml/MLPTypes';
 
 export interface NavigationState {
   timestamp: number;
@@ -152,6 +155,8 @@ export interface NavigationState {
   gpsActive: boolean;
   gpsInputEnabled: boolean;
   gpsReceiver: GPSReceiverInfo;
+  mlEnabled: boolean;
+  mlTelemetry?: import('../engine/ml/MLPTypes').MLTelemetry;
   pdr: PDRState;
   ekf: EKFTelemetry;
   debug: DebugTelemetry;

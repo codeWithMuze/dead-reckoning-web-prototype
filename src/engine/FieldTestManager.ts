@@ -13,6 +13,7 @@ import { useNavStore } from '../store/useNavStore.ts';
 import { sessionRecorder } from './SessionRecorder.ts';
 import { calibrationManager } from './CalibrationManager.ts';
 import { geodeticToENU } from './MathUtils.ts';
+import { aiModule } from './AIModule.ts';
 
 const STORAGE_KEY = 'navisense_field_test_records_v1';
 
@@ -106,6 +107,15 @@ export const TEST_DEFINITIONS: Record<TestId, TestDefinition> = {
     physicalInstructions: 'While dead-reckoning in GPS-denied area, walk back outside under clear open sky. Wait for GPS fix to reacquire and state to converge.',
     groundTruthPrompts: { outageDuration: true },
     defaultPassCriteria: 'Smooth reacquisition without state explosion; Uncertainty contracts by ≥ 40%',
+  },
+  'TEST-ML-01': {
+    id: 'TEST-ML-01',
+    name: 'Adaptive ML vs Baseline PDR A/B Test',
+    category: 'ML_ADAPTIVE',
+    description: 'Evaluates on-device neural stride correction against deterministic Weinberg baseline over a measured distance line.',
+    physicalInstructions: 'Walk a pre-measured straight corridor (e.g. 20.0m or 50.0m). ML will adaptively scale stride lengths based on gait dynamics.',
+    groundTruthPrompts: { distance: true },
+    defaultPassCriteria: 'ML Distance Error % ≤ Baseline Distance Error % or within ±8%',
   },
 };
 
@@ -368,6 +378,27 @@ export class FieldTestManager {
         ? Math.max(0, this.outageStartTimestamp - this.lastKnownGpsTimestamp)
         : undefined;
 
+    // Inspect recorded session frames for baseline vs ML stride analytics
+    const recordedFrames = sessionRecorder.getRecordedFrames();
+    const stepFrames = recordedFrames.filter(
+      (f) => f.stepEvent !== null && f.mlPrediction !== null
+    );
+
+    let mlBaselineDist = 0;
+    let mlCorrectedDist = 0;
+    let mlFallbackCount = 0;
+
+    for (const sf of stepFrames) {
+      const baseStride = sf.stepEvent!.strideLength;
+      const corrStride = sf.mlPrediction?.correctedStride ?? baseStride;
+      mlBaselineDist += baseStride;
+      mlCorrectedDist += corrStride;
+      if (sf.mlPrediction?.isFallback) mlFallbackCount++;
+    }
+
+    mlBaselineDist = Number(mlBaselineDist.toFixed(2));
+    mlCorrectedDist = Number(mlCorrectedDist.toFixed(2));
+
     const measured: MeasuredTelemetry = {
       steps,
       cadence: Number(store.navState.pdr.cadence.toFixed(0)),
@@ -406,6 +437,9 @@ export class FieldTestManager {
         this.activeTestId === 'TEST-09' || this.activeTestId === 'TEST-10'
           ? (this.recordedOutageType || (!store.gpsInputEnabled ? 'APPLICATION_INPUT_DISABLED' : 'PHYSICAL_GNSS_LOSS'))
           : undefined,
+      mlBaselineDistanceMeters: mlBaselineDist > 0 ? mlBaselineDist : undefined,
+      mlCorrectedDistanceMeters: mlCorrectedDist > 0 ? mlCorrectedDist : undefined,
+      mlFallbackCount: mlFallbackCount > 0 ? mlFallbackCount : undefined,
     };
 
     // Protocol-Specific Rigorous Error Calculations
@@ -457,6 +491,32 @@ export class FieldTestManager {
       errors.distanceErrorPct = Number(((distDiff / groundTruth.trueDistanceMeters) * 100).toFixed(1));
     }
 
+    // Adaptive ML vs Baseline PDR A/B Test: TEST-ML-01
+    if (
+      this.activeTestId === 'TEST-ML-01' &&
+      groundTruth.trueDistanceMeters && groundTruth.trueDistanceMeters > 0
+    ) {
+      const trueDist = groundTruth.trueDistanceMeters;
+      const baselineDist = mlBaselineDist > 0 ? mlBaselineDist : distanceMeters;
+      const corrDist = mlCorrectedDist > 0 ? mlCorrectedDist : distanceMeters;
+
+      const baselineDiff = Math.abs(baselineDist - trueDist);
+      const baselineErrPct = Number(((baselineDiff / trueDist) * 100).toFixed(1));
+
+      const mlDiff = Math.abs(corrDist - trueDist);
+      const mlErrPct = Number(((mlDiff / trueDist) * 100).toFixed(1));
+
+      const improvementPct = baselineErrPct > 0
+        ? Number((((baselineErrPct - mlErrPct) / baselineErrPct) * 100).toFixed(1))
+        : 0;
+
+      errors.distanceErrorMeters = Number(baselineDiff.toFixed(2));
+      errors.distanceErrorPct = baselineErrPct;
+      errors.mlDistanceErrorMeters = Number(mlDiff.toFixed(2));
+      errors.mlDistanceErrorPct = mlErrPct;
+      errors.mlImprovementPct = improvementPct;
+    }
+
     // Pass / Fail Evaluation against default criteria
     switch (this.activeTestId) {
       case 'TEST-01': {
@@ -500,6 +560,12 @@ export class FieldTestManager {
         passed = uncertaintyContracted;
         break;
       }
+      case 'TEST-ML-01': {
+        passed = errors.mlDistanceErrorPct !== undefined
+          ? (errors.mlDistanceErrorPct <= 10.0 || (errors.mlImprovementPct !== undefined && errors.mlImprovementPct >= 0))
+          : false;
+        break;
+      }
     }
 
     // Device & Browser metadata
@@ -534,6 +600,24 @@ export class FieldTestManager {
 
     this.records.unshift(record);
     this.saveRecords();
+
+    // Auto-record labeled training samples if physical distance was measured
+    if (
+      (this.activeTestId === 'TEST-06' || this.activeTestId === 'TEST-07' || this.activeTestId === 'TEST-ML-01') &&
+      groundTruth.trueDistanceMeters && groundTruth.trueDistanceMeters > 0 &&
+      stepFrames.length > 0
+    ) {
+      try {
+        const featuresList = stepFrames.map((f) => f.mlPrediction!.features);
+        const effectiveBaseline = mlBaselineDist > 0 ? mlBaselineDist : distanceMeters;
+        aiModule.recordLabeledSession(
+          record.recordId,
+          featuresList,
+          groundTruth.trueDistanceMeters,
+          effectiveBaseline
+        );
+      } catch {}
+    }
 
     sessionRecorder.stop();
     this.releaseWakeLock();
@@ -575,6 +659,7 @@ export class FieldTestManager {
           'TEST-08': 0,
           'TEST-09': 0,
           'TEST-10': 0,
+          'TEST-ML-01': 0,
         },
         meanStepAccuracyPct: null,
         meanDistanceErrorPct: null,
@@ -597,6 +682,7 @@ export class FieldTestManager {
       'TEST-08': 0,
       'TEST-09': 0,
       'TEST-10': 0,
+      'TEST-ML-01': 0,
     };
 
     const stepAccs: number[] = [];

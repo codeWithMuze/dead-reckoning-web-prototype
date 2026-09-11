@@ -7,6 +7,7 @@ import { StepDetector } from './StepDetector';
 import { NavigationEKF } from './NavigationEKF';
 import { sessionRecorder } from './SessionRecorder';
 import { fieldTestManager } from './FieldTestManager.ts';
+import { aiModule } from './AIModule';
 import type { SensorSample, GPSMeasurement, Position2D, Vector3D } from '../types';
 
 export class NavEngine {
@@ -160,6 +161,7 @@ export class NavEngine {
     }
 
     store.updateSensor(sample);
+    aiModule.feedSensorSample(sample);
 
     if (!this.isRunning || store.navState.mode === 'IDLE' || store.navState.mode === 'CALIBRATING') return;
 
@@ -243,11 +245,31 @@ export class NavEngine {
     // 6. Pedestrian Step Detection & Weinberg Stride Estimation
     // Uses vertical dynamic acceleration (+Z in ENU)
     const stepEvent = this.stepDetector.processSample(linearAccelWorld.z, sample.timestamp, headingDeg);
+    let currentMlPrediction: import('../types').MLPrediction | null = null;
 
     if (stepEvent && this.origin) {
+      let effectiveStride = stepEvent.strideLength;
+      let dE = stepEvent.displacement.dE;
+      let dN = stepEvent.displacement.dN;
+
+      // Evaluate on-device ML adaptive stride error correction
+      try {
+        const accelSwing = Math.max(0.5, Math.abs(linearAccelWorld.z) * 2.2);
+        currentMlPrediction = aiModule.evaluateStep(stepEvent, accelSwing);
+        if (aiModule.isEnabled() && !currentMlPrediction.isFallback) {
+          effectiveStride = currentMlPrediction.correctedStride;
+          this.stepDetector.adjustLastStepStride(effectiveStride, stepEvent.strideLength);
+          const headingRad = headingDeg * (Math.PI / 180);
+          dE = Number((effectiveStride * Math.sin(headingRad)).toFixed(4));
+          dN = Number((effectiveStride * Math.cos(headingRad)).toFixed(4));
+        }
+      } catch {
+        // Safe fallback: effectiveStride remains deterministic Weinberg
+      }
+
       // Propagate discrete PDR local metric position:
-      this.pdrLocalPos.east += stepEvent.displacement.dE;
-      this.pdrLocalPos.north += stepEvent.displacement.dN;
+      this.pdrLocalPos.east += dE;
+      this.pdrLocalPos.north += dN;
 
       // Update EKF with PDR step constraint
       this.ekf.updatePDRStep(this.pdrLocalPos.east, this.pdrLocalPos.north, 0.7);
@@ -265,7 +287,7 @@ export class NavEngine {
         stepCount: this.stepDetector.getStepCount(),
         cadence: this.stepDetector.getCadence(),
         lastStepTime: stepEvent.timestamp,
-        strideLength: stepEvent.strideLength,
+        strideLength: effectiveStride,
         totalDistance: Number(this.stepDetector.getTotalDistance().toFixed(1)),
         localPos: { ...this.pdrLocalPos },
         geodeticPos: pdrGeodetic,
@@ -351,6 +373,7 @@ export class NavEngine {
       heading: headingDeg,
       motionState,
       stepEvent,
+      mlPrediction: currentMlPrediction,
       pdrPos: { ...this.pdrLocalPos },
       ekfPos: { ...ekfPos },
     });
