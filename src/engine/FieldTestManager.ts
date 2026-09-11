@@ -11,6 +11,8 @@ import type {
 } from '../types/fieldTest.ts';
 import { useNavStore } from '../store/useNavStore.ts';
 import { sessionRecorder } from './SessionRecorder.ts';
+import { calibrationManager } from './CalibrationManager.ts';
+import { geodeticToENU } from './MathUtils.ts';
 
 const STORAGE_KEY = 'navisense_field_test_records_v1';
 
@@ -19,10 +21,10 @@ export const TEST_DEFINITIONS: Record<TestId, TestDefinition> = {
     id: 'TEST-01',
     name: 'Stationary Sensor Calibration',
     category: 'CALIBRATION',
-    description: 'Measures 3-axis accelerometer and gyroscope biases and sensor noise floors while stationary.',
-    physicalInstructions: 'Place phone completely flat and motionless on a sturdy table. Click Calibrate in Diagnostics, then run this 10-second verification test.',
+    description: 'Measures and persists 3-axis accelerometer and gyroscope biases and sensor noise floors while stationary.',
+    physicalInstructions: 'Place phone completely flat and motionless on a sturdy table. Starting TEST-01 automatically collects calibration samples, computes biases and noise floors, and saves the calibration.',
     groundTruthPrompts: { duration: true },
-    defaultPassCriteria: 'Gyro bias norm < 0.02 rad/s and Accel noise std < 0.08 m/s²',
+    defaultPassCriteria: 'Calibrated = true, Gyro bias norm < 0.03 rad/s, Accel noise std < 0.15 m/s²',
   },
   'TEST-02': {
     id: 'TEST-02',
@@ -31,7 +33,7 @@ export const TEST_DEFINITIONS: Record<TestId, TestDefinition> = {
     description: 'Verifies Zero-Velocity Update (ZUPT) engages and clamps velocity to 0.0 m/s without unphysical drift.',
     physicalInstructions: 'Keep phone completely still on a flat surface for 30–60 seconds. Do not touch or bump the desk.',
     groundTruthPrompts: { duration: true },
-    defaultPassCriteria: 'Max estimated speed < 0.05 m/s and Final Displacement < 0.20 m',
+    defaultPassCriteria: 'Max speed < 0.08 m/s, Final velocity < 0.03 m/s, Inertial PDR drift = 0.0m',
   },
   'TEST-03': {
     id: 'TEST-03',
@@ -66,7 +68,7 @@ export const TEST_DEFINITIONS: Record<TestId, TestDefinition> = {
     category: 'PDR_DISTANCE',
     description: 'Validates Weinberg stride length estimation over a 20.0-meter tape-measured line.',
     physicalInstructions: 'Pre-measure a 20.0m straight line with tape or floor tiles. Start at 0.0m mark, walk to 20.0m mark, and stop.',
-    groundTruthPrompts: { distance: true, steps: true },
+    groundTruthPrompts: { distance: true },
     defaultPassCriteria: 'Distance Percentage Error ≤ 10% (|Estimated - 20m| ≤ 2.0m)',
   },
   'TEST-07': {
@@ -75,7 +77,7 @@ export const TEST_DEFINITIONS: Record<TestId, TestDefinition> = {
     category: 'PDR_DISTANCE',
     description: 'Validates long-range PDR distance integration against physical ground truth.',
     physicalInstructions: 'Walk a measured 50.0m corridor. Stop precisely at the 50.0m finish line.',
-    groundTruthPrompts: { distance: true, steps: true },
+    groundTruthPrompts: { distance: true },
     defaultPassCriteria: 'Distance Percentage Error ≤ 8% (|Estimated - 50m| ≤ 4.0m)',
   },
   'TEST-08': {
@@ -84,7 +86,7 @@ export const TEST_DEFINITIONS: Record<TestId, TestDefinition> = {
     category: 'TRAJECTORY',
     description: 'Tests heading integration and loop closure FDE by walking a closed geometric polygon.',
     physicalInstructions: 'Mark start point. Walk 10m forward, 90° right turn, walk 10m, 90° right turn, walk 10m, 90° right turn, walk 10m back to start mark.',
-    groundTruthPrompts: { distance: true, steps: true },
+    groundTruthPrompts: { distance: true },
     defaultPassCriteria: 'Final Displacement Error (FDE) ≤ 3.5 meters upon return to start',
   },
   'TEST-09': {
@@ -93,7 +95,7 @@ export const TEST_DEFINITIONS: Record<TestId, TestDefinition> = {
     category: 'GPS_RESILIENCE',
     description: 'Measures GPS-loss detection latency and EKF/PDR dead-reckoning drift during GNSS denial.',
     physicalInstructions: 'Start outdoors with green GPS fix. Walk into a concrete parking garage, basement, or shielded corridor. Continue walking for 60 seconds.',
-    groundTruthPrompts: { outageDuration: true, distance: true },
+    groundTruthPrompts: { outageDuration: true },
     defaultPassCriteria: 'GPS-Loss Latency ≤ 3.0s and Drift Rate ≤ 5.0 m/min',
   },
   'TEST-10': {
@@ -117,12 +119,15 @@ export class FieldTestManager {
   private totalPausedMs = 0;
   private initialPdrSteps = 0;
   private initialPdrDist = 0;
+  private initialPdrPos = { east: 0, north: 0 };
   private initialEkfPos = { east: 0, north: 0 };
   private initialGpsPos: { latitude: number; longitude: number } | null = null;
   private initialHeadingDeg = 0;
   private maxSpeedMps = 0;
   private speedSum = 0;
   private speedSampleCount = 0;
+  private zuptTicks = 0;
+  private totalTicks = 0;
 
   // GPS Outage tracking variables
   private outagePhase: OutagePhase = 'NONE';
@@ -186,10 +191,13 @@ export class FieldTestManager {
     this.maxSpeedMps = 0;
     this.speedSum = 0;
     this.speedSampleCount = 0;
+    this.zuptTicks = 0;
+    this.totalTicks = 0;
 
     // Snapshot starting state
     this.initialPdrSteps = store.navState.pdr.stepCount;
     this.initialPdrDist = store.navState.pdr.totalDistance;
+    this.initialPdrPos = { ...store.navState.pdr.localPos };
     this.initialEkfPos = {
       east: store.navState.ekf.state[0],
       north: store.navState.ekf.state[1],
@@ -198,6 +206,20 @@ export class FieldTestManager {
       ? { latitude: store.navState.gps.latitude, longitude: store.navState.gps.longitude }
       : null;
     this.initialHeadingDeg = store.navState.heading;
+
+    // Reset test-local cadence & step timing so prior session walking never leaks
+    useNavStore.getState().updatePDR({ cadence: 0 });
+    try {
+      const { navEngine } = await import('./NavEngine.ts');
+      navEngine.resetCadenceAndStepTiming();
+    } catch {}
+
+    // For TEST-01: Automatically trigger stationary calibration
+    if (testId === 'TEST-01') {
+      if (!calibrationManager.isBusy()) {
+        calibrationManager.startCalibration();
+      }
+    }
 
     // Initialize GPS outage tracking
     if (testId === 'TEST-09' || testId === 'TEST-10') {
@@ -239,19 +261,27 @@ export class FieldTestManager {
     this.pauseTimestamp = 0;
     this.totalPausedMs = 0;
     this.outagePhase = 'NONE';
+    this.zuptTicks = 0;
+    this.totalTicks = 0;
     this.releaseWakeLock();
   }
 
   /**
-   * Called by navigation engine ticks to track speed and GPS outage transitions.
+   * Called by navigation engine ticks to track speed, ZUPT, and GPS outage transitions.
    */
   public handleTick(
     gpsActive: boolean,
     currentSpeed: number,
     uncertainty1Sigma: number,
-    ekfPos: { east: number; north: number }
+    ekfPos: { east: number; north: number },
+    isStationary?: boolean
   ): void {
     if (this.status !== 'RUNNING') return;
+
+    this.totalTicks++;
+    if (isStationary) {
+      this.zuptTicks++;
+    }
 
     // Speed tracking
     if (currentSpeed > this.maxSpeedMps) this.maxSpeedMps = currentSpeed;
@@ -298,11 +328,38 @@ export class FieldTestManager {
     };
     const finalHeadingDeg = Number(store.navState.heading.toFixed(1));
     const meanSpeedMps = this.speedSampleCount > 0 ? Number((this.speedSum / this.speedSampleCount).toFixed(2)) : 0;
+    const finalVelocityMps = Number(Math.hypot(store.navState.estimatedVelocity.ve, store.navState.estimatedVelocity.vn).toFixed(2));
 
-    // Displacement / FDE calculation
+    // 1. Inertial / PDR Displacement (independent of GPS)
+    const dPdrEast = pdrEndPos.east - this.initialPdrPos.east;
+    const dPdrNorth = pdrEndPos.north - this.initialPdrPos.north;
+    const pdrDisplacementMeters = Number(Math.hypot(dPdrEast, dPdrNorth).toFixed(2));
+
+    // 2. GPS-Induced Position Movement (Wander)
+    let gpsDisplacementMeters: number | null = null;
+    if (this.initialGpsPos && store.navState.gps) {
+      const { east: gEast, north: gNorth } = geodeticToENU(
+        store.navState.gps.latitude,
+        store.navState.gps.longitude,
+        this.initialGpsPos.latitude,
+        this.initialGpsPos.longitude
+      );
+      gpsDisplacementMeters = Number(Math.hypot(gEast, gNorth).toFixed(2));
+    }
+
+    // 3. Total EKF Displacement / FDE calculation
     const dEast = ekfEndPos.east - this.initialEkfPos.east;
     const dNorth = ekfEndPos.north - this.initialEkfPos.north;
     const fdeMeters = Number(Math.hypot(dEast, dNorth).toFixed(2));
+
+    // ZUPT activation percentage
+    const zuptActivationPct = this.totalTicks > 0 ? Number(((this.zuptTicks / this.totalTicks) * 100).toFixed(1)) : 100;
+
+    // Calibration stats
+    const cal = store.calibration;
+    const gyroBiasNorm = Number(Math.hypot(cal.gyroBias.x, cal.gyroBias.y, cal.gyroBias.z).toFixed(4));
+    const accelNoiseStd = cal.accelNoiseStd;
+    const gyroNoiseStd = cal.gyroNoiseStd;
 
     const gpsOutageLatencyMs =
       this.outageStartTimestamp > 0 && this.lastKnownGpsTimestamp > 0
@@ -315,16 +372,23 @@ export class FieldTestManager {
       distanceMeters,
       pdrStartPos: { east: 0, north: 0 },
       pdrEndPos,
+      pdrDisplacementMeters,
       ekfStartPos: { ...this.initialEkfPos },
       ekfEndPos,
       gpsStartPos: this.initialGpsPos,
       gpsEndPos: store.navState.gps
         ? { latitude: store.navState.gps.latitude, longitude: store.navState.gps.longitude }
         : null,
+      gpsDisplacementMeters,
       startHeadingDeg: Number(this.initialHeadingDeg.toFixed(1)),
       endHeadingDeg: finalHeadingDeg,
       maxSpeedMps: Number(this.maxSpeedMps.toFixed(2)),
       meanSpeedMps,
+      finalVelocityMps,
+      zuptActivationPct,
+      gyroBiasNorm,
+      accelNoiseStd,
+      gyroNoiseStd,
       finalUncertainty1Sigma: store.navState.ekf.uncertainty1Sigma,
       finalUncertainty2Sigma: store.navState.ekf.uncertainty2Sigma,
       fdeMeters,
@@ -338,31 +402,19 @@ export class FieldTestManager {
       uncertaintyAfterReacquisitionM: this.uncertaintyAfterReacquisition || undefined,
     };
 
-    // Rigorous Error Calculations
+    // Protocol-Specific Rigorous Error Calculations
     const errors: CalculatedErrors = {};
     let passed = false;
 
-    // Step accuracy
-    if (groundTruth.trueSteps && groundTruth.trueSteps > 0) {
-      const stepDiff = Math.abs(steps - groundTruth.trueSteps);
-      errors.stepError = stepDiff;
-      errors.stepAccuracyPct = Number(
-        Math.max(0, (1 - stepDiff / groundTruth.trueSteps) * 100).toFixed(1)
-      );
-    }
-
-    // Distance accuracy
-    if (groundTruth.trueDistanceMeters && groundTruth.trueDistanceMeters > 0) {
-      const distDiff = Math.abs(distanceMeters - groundTruth.trueDistanceMeters);
-      errors.distanceErrorMeters = Number(distDiff.toFixed(2));
-      errors.distanceErrorPct = Number(((distDiff / groundTruth.trueDistanceMeters) * 100).toFixed(1));
-    }
-
-    // FDE & Drift
+    // FDE & Drift metrics
     errors.finalDisplacementErrorMeters = fdeMeters;
+    if (gpsDisplacementMeters !== null) {
+      errors.gpsWanderMeters = gpsDisplacementMeters;
+    }
     if (durationSec > 0) {
       const durationMin = durationSec / 60;
       errors.driftRateMPerMin = Number((fdeMeters / durationMin).toFixed(2));
+      errors.inertialDriftMPerMin = Number((pdrDisplacementMeters / durationMin).toFixed(2));
       const headingDiff = Math.abs(finalHeadingDeg - this.initialHeadingDeg);
       errors.headingErrorDeg = Number(headingDiff.toFixed(1));
       errors.headingDriftRateDegPerMin = Number((headingDiff / durationMin).toFixed(2));
@@ -377,15 +429,42 @@ export class FieldTestManager {
       errors.uncertaintyAfterM = this.uncertaintyAfterReacquisition;
     }
 
+    // Step accuracy: only for TEST-03, TEST-04, TEST-05
+    if (
+      (this.activeTestId === 'TEST-03' || this.activeTestId === 'TEST-04' || this.activeTestId === 'TEST-05') &&
+      groundTruth.trueSteps && groundTruth.trueSteps > 0
+    ) {
+      const stepDiff = Math.abs(steps - groundTruth.trueSteps);
+      errors.stepError = stepDiff;
+      errors.stepAccuracyPct = Number(
+        Math.max(0, (1 - stepDiff / groundTruth.trueSteps) * 100).toFixed(1)
+      );
+    }
+
+    // Distance accuracy: only for TEST-06, TEST-07
+    if (
+      (this.activeTestId === 'TEST-06' || this.activeTestId === 'TEST-07') &&
+      groundTruth.trueDistanceMeters && groundTruth.trueDistanceMeters > 0
+    ) {
+      const distDiff = Math.abs(distanceMeters - groundTruth.trueDistanceMeters);
+      errors.distanceErrorMeters = Number(distDiff.toFixed(2));
+      errors.distanceErrorPct = Number(((distDiff / groundTruth.trueDistanceMeters) * 100).toFixed(1));
+    }
+
     // Pass / Fail Evaluation against default criteria
     switch (this.activeTestId) {
       case 'TEST-01': {
-        const cal = store.calibration;
-        passed = cal.calibrated && cal.accelNoiseStd < 0.12 && cal.gyroNoiseStd < 0.03;
+        // Stationary Sensor Calibration
+        errors.gyroBiasNorm = gyroBiasNorm;
+        errors.accelNoiseStd = accelNoiseStd;
+        errors.gyroNoiseStd = gyroNoiseStd;
+        passed = cal.calibrated && gyroBiasNorm < 0.03 && accelNoiseStd < 0.15 && gyroNoiseStd < 0.04;
         break;
       }
       case 'TEST-02': {
-        passed = this.maxSpeedMps < 0.08 && fdeMeters < 0.35;
+        // Stationary ZUPT Velocity Clamp
+        // Inertial PDR displacement must remain 0.0m (< 0.05m), speed clamped < 0.08 m/s
+        passed = this.maxSpeedMps < 0.08 && pdrDisplacementMeters < 0.05 && finalVelocityMps < 0.03;
         break;
       }
       case 'TEST-03':

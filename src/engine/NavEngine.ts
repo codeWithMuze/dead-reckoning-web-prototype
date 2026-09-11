@@ -48,6 +48,11 @@ export class NavEngine {
     useNavStore.getState().updatePDR({ weinbergK: this.stepDetector.getWeinbergK() });
   }
 
+  public resetCadenceAndStepTiming() {
+    this.stepDetector.resetCadence();
+    useNavStore.getState().updatePDR({ cadence: 0 });
+  }
+
   public resetOrigin(lat: number, lon: number) {
     this.origin = { latitude: lat, longitude: lon };
     this.pdrLocalPos = { east: 0, north: 0 };
@@ -264,6 +269,12 @@ export class NavEngine {
         localPos: { ...this.pdrLocalPos },
         geodeticPos: pdrGeodetic,
       });
+    } else {
+      // Step did not occur on this tick: keep cadence synchronized (decays to 0 when idle > 2.5s)
+      const currentCadence = this.stepDetector.getCadence();
+      if (currentCadence !== store.navState.pdr.cadence) {
+        store.updatePDR({ cadence: currentCadence });
+      }
     }
 
     // 7. GPS Outage Detection (Age > 4000ms triggers GPS_DENIED)
@@ -324,7 +335,8 @@ export class NavEngine {
       store.navState.gpsActive,
       Math.hypot(vel.ve, vel.vn),
       ekfTelemetry.uncertainty1Sigma,
-      ekfPos
+      ekfPos,
+      motionState === 'STATIONARY'
     );
 
     // 10. Session Recording Frame

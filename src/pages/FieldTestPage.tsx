@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavStore } from '../store/useNavStore.ts';
 import { fieldTestManager, TEST_DEFINITIONS } from '../engine/FieldTestManager.ts';
+import { calibrationManager } from '../engine/CalibrationManager.ts';
 import type { TestId, FieldTestRecord, GroundTruthEntry } from '../types/fieldTest.ts';
 import {
   FlaskConical,
@@ -22,52 +23,74 @@ import {
 
 export const FieldTestPage: React.FC = () => {
   const { navState, calibration, latestSensor } = useNavStore();
-  const [selectedTestId, setSelectedTestId] = useState<TestId>('TEST-03');
+  const [selectedTestId, setSelectedTestId] = useState<TestId>('TEST-01');
   const [testStatus, setTestStatus] = useState(fieldTestManager.getStatus());
   const [elapsedSec, setElapsedSec] = useState(0);
   const [showGroundTruthModal, setShowGroundTruthModal] = useState(false);
   const [latestRecord, setLatestRecord] = useState<FieldTestRecord | null>(null);
   const [records, setRecords] = useState<FieldTestRecord[]>(fieldTestManager.getRecords());
   const [instructionsExpanded, setInstructionsExpanded] = useState(true);
+  const [calibProgress, setCalibProgress] = useState<number>(0);
+  const [isCalibrating, setIsCalibrating] = useState<boolean>(false);
 
   // Ground Truth Form inputs
-  const [gtSteps, setGtSteps] = useState<string>('20');
-  const [gtDistance, setGtDistance] = useState<string>('20.0');
-  const [gtHeading, setGtHeading] = useState<string>('0');
-  const [gtDuration, setGtDuration] = useState<string>('60');
+  const [gtSteps, setGtSteps] = useState<string>('');
+  const [gtDistance, setGtDistance] = useState<string>('');
+  const [gtHeading, setGtHeading] = useState<string>('');
+  const [gtDuration, setGtDuration] = useState<string>('30');
 
   // Sync test manager status and timer
   useEffect(() => {
     const timer = setInterval(() => {
       setTestStatus(fieldTestManager.getStatus());
       setElapsedSec(fieldTestManager.getElapsedSeconds());
+      setIsCalibrating(calibrationManager.isBusy());
     }, 100);
     return () => clearInterval(timer);
   }, []);
 
-  // Update default ground truth values when selected test changes
+  // Update default ground truth values strictly for selected test
   useEffect(() => {
-    if (selectedTestId === 'TEST-03') {
+    if (selectedTestId === 'TEST-01' || selectedTestId === 'TEST-02') {
+      setGtSteps('');
+      setGtDistance('');
+      setGtHeading('');
+      setGtDuration('30');
+    } else if (selectedTestId === 'TEST-03') {
       setGtSteps('20');
-      setGtDistance('15.0');
+      setGtDistance('');
+      setGtHeading('0');
+      setGtDuration('30');
     } else if (selectedTestId === 'TEST-04') {
       setGtSteps('50');
-      setGtDistance('37.5');
+      setGtDistance('');
+      setGtHeading('0');
+      setGtDuration('60');
     } else if (selectedTestId === 'TEST-05') {
       setGtSteps('100');
-      setGtDistance('75.0');
+      setGtDistance('');
+      setGtHeading('0');
+      setGtDuration('120');
     } else if (selectedTestId === 'TEST-06') {
       setGtDistance('20.0');
-      setGtSteps('27');
+      setGtSteps('');
+      setGtHeading('0');
+      setGtDuration('30');
     } else if (selectedTestId === 'TEST-07') {
       setGtDistance('50.0');
-      setGtSteps('67');
+      setGtSteps('');
+      setGtHeading('0');
+      setGtDuration('60');
     } else if (selectedTestId === 'TEST-08') {
       setGtDistance('40.0');
-      setGtSteps('54');
+      setGtSteps('');
+      setGtHeading('0');
+      setGtDuration('60');
     } else if (selectedTestId === 'TEST-09' || selectedTestId === 'TEST-10') {
       setGtDuration('60');
-      setGtDistance('45.0');
+      setGtDistance('');
+      setGtSteps('');
+      setGtHeading('');
     }
   }, [selectedTestId]);
 
@@ -86,11 +109,36 @@ export const FieldTestPage: React.FC = () => {
       alert('Field Test Mode requires LIVE DEVICE SENSORS. Please reload the app and click START LIVE SESSION.');
       return;
     }
+
+    if (selectedTestId === 'TEST-01') {
+      setCalibProgress(0);
+      setIsCalibrating(true);
+      calibrationManager.startCalibration(
+        (p) => setCalibProgress(p),
+        () => {
+          setCalibProgress(100);
+          setIsCalibrating(false);
+        }
+      );
+    }
+
     const ok = await fieldTestManager.startTest(selectedTestId);
     if (ok) {
       setTestStatus('RUNNING');
       setLatestRecord(null);
     }
+  };
+
+  const handleRecalibrateNow = () => {
+    setCalibProgress(0);
+    setIsCalibrating(true);
+    calibrationManager.startCalibration(
+      (p) => setCalibProgress(p),
+      () => {
+        setCalibProgress(100);
+        setIsCalibrating(false);
+      }
+    );
   };
 
   const handlePause = () => {
@@ -110,11 +158,11 @@ export const FieldTestPage: React.FC = () => {
 
   const handleFinalizeStop = () => {
     const gt: GroundTruthEntry = {
-      trueSteps: gtSteps ? Number(gtSteps) : undefined,
-      trueDistanceMeters: gtDistance ? Number(gtDistance) : undefined,
-      trueHeadingDeg: gtHeading ? Number(gtHeading) : undefined,
-      knownDurationSec: gtDuration ? Number(gtDuration) : undefined,
-      knownOutageDurationSec: selectedTestId === 'TEST-09' || selectedTestId === 'TEST-10' ? Number(gtDuration) : undefined,
+      trueSteps: activeDef.groundTruthPrompts.steps && gtSteps ? Number(gtSteps) : undefined,
+      trueDistanceMeters: activeDef.groundTruthPrompts.distance && gtDistance ? Number(gtDistance) : undefined,
+      trueHeadingDeg: activeDef.groundTruthPrompts.heading && gtHeading ? Number(gtHeading) : undefined,
+      knownDurationSec: activeDef.groundTruthPrompts.duration && gtDuration ? Number(gtDuration) : undefined,
+      knownOutageDurationSec: (selectedTestId === 'TEST-09' || selectedTestId === 'TEST-10') && gtDuration ? Number(gtDuration) : undefined,
     };
 
     const record = fieldTestManager.stopTest(gt);
@@ -131,6 +179,8 @@ export const FieldTestPage: React.FC = () => {
     setTestStatus('IDLE');
     setElapsedSec(0);
     setLatestRecord(null);
+    setCalibProgress(0);
+    setIsCalibrating(false);
   };
 
   const handleDeleteRecord = (id: string) => {
@@ -274,6 +324,66 @@ export const FieldTestPage: React.FC = () => {
             <div className="text-[11px] text-muted font-mono flex items-center justify-between pt-1">
               <span>Pass Criteria: <strong className="text-gray-200">{activeDef.defaultPassCriteria}</strong></span>
             </div>
+
+            {/* Clearly labeled badge for stationary protocols */}
+            {(selectedTestId === 'TEST-01' || selectedTestId === 'TEST-02') && (
+              <div className="bg-primary/10 border border-primary/30 text-primary px-3 py-2 rounded-lg text-xs font-mono font-bold flex items-center space-x-2 mt-2">
+                <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                <span>NO WALKING GROUND TRUTH REQUIRED (STATIONARY BENCH PROTOCOL)</span>
+              </div>
+            )}
+
+            {/* Live Calibration Panel for TEST-01 */}
+            {selectedTestId === 'TEST-01' && (
+              <div className="space-y-2 pt-2 border-t border-border mt-2">
+                {isCalibrating ? (
+                  <div className="bg-background/80 border border-primary/40 rounded-xl p-3.5 space-y-2 font-mono text-xs">
+                    <div className="flex justify-between items-center">
+                      <span className="text-primary font-bold animate-pulse">Collecting Stationary IMU Samples...</span>
+                      <span className="text-white font-bold">{calibProgress}%</span>
+                    </div>
+                    <div className="w-full bg-gray-700 h-2.5 rounded-full overflow-hidden">
+                      <div className="bg-primary h-full transition-all duration-150" style={{ width: `${calibProgress}%` }} />
+                    </div>
+                    <p className="text-[11px] text-gray-400">Place phone flat on table. Sampling accelerometer & gyroscope bias offsets and noise floors...</p>
+                  </div>
+                ) : calibration.calibrated ? (
+                  <div className="bg-background/80 border border-success/40 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 font-mono text-xs">
+                    <div>
+                      <div className="text-success font-bold flex items-center space-x-1.5">
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Stationary Sensor Calibration Active & Persisted</span>
+                      </div>
+                      <div className="text-[11px] text-gray-300 mt-0.5">
+                        Gyro Bias: [x: {calibration.gyroBias.x.toFixed(3)}, y: {calibration.gyroBias.y.toFixed(3)}, z: {calibration.gyroBias.z.toFixed(3)}] rad/s | Accel Noise: ±{calibration.accelNoiseStd.toFixed(3)} m/s² | Gyro Noise: ±{calibration.gyroNoiseStd.toFixed(3)} rad/s
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleRecalibrateNow}
+                      className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-mono cursor-pointer"
+                    >
+                      Recalibrate IMU Now
+                    </button>
+                  </div>
+                ) : (
+                  <div className="bg-background/80 border border-warning/40 rounded-xl p-3.5 flex items-center justify-between font-mono text-xs">
+                    <div className="space-y-0.5">
+                      <span className="text-warning font-bold flex items-center space-x-1">
+                        <AlertTriangle className="w-4 h-4" />
+                        <span>Uncalibrated (Using Default Factory Noise Offsets)</span>
+                      </span>
+                      <p className="text-[11px] text-gray-400">Place phone flat and motionless, then click Start Test to auto-calibrate.</p>
+                    </div>
+                    <button
+                      onClick={handleRecalibrateNow}
+                      className="px-3 py-1.5 bg-primary hover:bg-blue-600 text-white font-bold rounded-lg text-xs font-mono cursor-pointer shadow-md"
+                    >
+                      Calibrate Now
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -436,78 +546,229 @@ export const FieldTestPage: React.FC = () => {
 
           {/* Side-by-Side Comparison: Measured vs Ground Truth */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 font-mono text-xs">
-            {/* Measured Column */}
+            {/* Column 1: Measured Telemetry */}
             <div className="bg-background/60 border border-border rounded-xl p-3.5 space-y-2">
               <span className="text-[10px] font-bold text-muted uppercase tracking-wider block border-b border-border pb-1">
                 Measured Telemetry (Sensors)
               </span>
               <div className="space-y-1">
                 <div className="flex justify-between"><span>Duration:</span><span className="text-white">{latestRecord.durationSec}s</span></div>
-                <div className="flex justify-between"><span>Steps:</span><span className="text-white font-bold">{latestRecord.measured.steps}</span></div>
-                <div className="flex justify-between"><span>PDR Distance:</span><span className="text-white font-bold">{latestRecord.measured.distanceMeters}m</span></div>
-                <div className="flex justify-between"><span>Cadence:</span><span className="text-gray-300">{latestRecord.measured.cadence} spm</span></div>
-                <div className="flex justify-between"><span>Final FDE:</span><span className="text-white font-bold">{latestRecord.measured.fdeMeters}m</span></div>
-                <div className="flex justify-between"><span>1σ Uncertainty:</span><span className="text-gray-300">±{latestRecord.measured.finalUncertainty1Sigma}m</span></div>
+
+                {latestRecord.testId === 'TEST-01' ? (
+                  <>
+                    <div className="flex justify-between"><span>Gyro Bias Norm:</span><span className="text-white font-bold">{latestRecord.measured.gyroBiasNorm ?? 0} rad/s</span></div>
+                    <div className="flex justify-between"><span>Accel Noise Std:</span><span className="text-white font-bold">{latestRecord.measured.accelNoiseStd ?? 0} m/s²</span></div>
+                    <div className="flex justify-between"><span>Gyro Noise Std:</span><span className="text-gray-300">{latestRecord.measured.gyroNoiseStd ?? 0} rad/s</span></div>
+                    <div className="flex justify-between"><span>Inertial Drift:</span><span className="text-white font-bold">{latestRecord.measured.pdrDisplacementMeters}m</span></div>
+                    <div className="flex justify-between"><span>GPS Wander:</span><span className="text-gray-300">{latestRecord.measured.gpsDisplacementMeters !== null && latestRecord.measured.gpsDisplacementMeters !== undefined ? `${latestRecord.measured.gpsDisplacementMeters}m` : 'None'}</span></div>
+                    <div className="flex justify-between"><span>Total EKF FDE:</span><span className="text-white font-bold">{latestRecord.measured.fdeMeters}m</span></div>
+                  </>
+                ) : latestRecord.testId === 'TEST-02' ? (
+                  <>
+                    <div className="flex justify-between"><span>Max Speed:</span><span className="text-white font-bold">{latestRecord.measured.maxSpeedMps} m/s</span></div>
+                    <div className="flex justify-between"><span>Final Velocity:</span><span className="text-white font-bold">{latestRecord.measured.finalVelocityMps ?? 0} m/s</span></div>
+                    <div className="flex justify-between"><span>ZUPT Activation:</span><span className="text-white font-bold">{latestRecord.measured.zuptActivationPct ?? 100}%</span></div>
+                    <div className="flex justify-between"><span>Inertial Movement:</span><span className="text-white font-bold">{latestRecord.measured.pdrDisplacementMeters}m</span></div>
+                    <div className="flex justify-between"><span>GPS Wander:</span><span className="text-gray-300">{latestRecord.measured.gpsDisplacementMeters !== null && latestRecord.measured.gpsDisplacementMeters !== undefined ? `${latestRecord.measured.gpsDisplacementMeters}m` : 'None'}</span></div>
+                    <div className="flex justify-between"><span>Total EKF FDE:</span><span className="text-white font-bold">{latestRecord.measured.fdeMeters}m</span></div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between"><span>Steps:</span><span className="text-white font-bold">{latestRecord.measured.steps}</span></div>
+                    <div className="flex justify-between"><span>PDR Distance:</span><span className="text-white font-bold">{latestRecord.measured.distanceMeters}m</span></div>
+                    <div className="flex justify-between"><span>Cadence:</span><span className="text-gray-300">{latestRecord.measured.cadence} spm</span></div>
+                    <div className="flex justify-between"><span>Final FDE:</span><span className="text-white font-bold">{latestRecord.measured.fdeMeters}m</span></div>
+                    <div className="flex justify-between"><span>1σ Uncertainty:</span><span className="text-gray-300">±{latestRecord.measured.finalUncertainty1Sigma}m</span></div>
+                  </>
+                )}
               </div>
             </div>
 
-            {/* Ground Truth Column */}
+            {/* Column 2: Physical Ground Truth */}
             <div className="bg-background/60 border border-border rounded-xl p-3.5 space-y-2">
               <span className="text-[10px] font-bold text-primary uppercase tracking-wider block border-b border-border pb-1">
                 Physical Ground Truth
               </span>
               <div className="space-y-1">
-                <div className="flex justify-between"><span>Known Duration:</span><span className="text-gray-300">{latestRecord.groundTruth.knownDurationSec || '---'}s</span></div>
-                <div className="flex justify-between"><span>True Steps:</span><span className="text-white font-bold">{latestRecord.groundTruth.trueSteps || '---'}</span></div>
-                <div className="flex justify-between"><span>Tape Distance:</span><span className="text-white font-bold">{latestRecord.groundTruth.trueDistanceMeters ? `${latestRecord.groundTruth.trueDistanceMeters}m` : '---'}</span></div>
-                <div className="flex justify-between"><span>True Heading:</span><span className="text-gray-300">{latestRecord.groundTruth.trueHeadingDeg !== undefined ? `${latestRecord.groundTruth.trueHeadingDeg}°` : '---'}</span></div>
-                <div className="flex justify-between"><span>Environment:</span><span className="text-gray-300">{latestRecord.device}</span></div>
+                {latestRecord.testId === 'TEST-01' ? (
+                  <>
+                    <div className="flex justify-between"><span>Bench Posture:</span><span className="text-gray-200">Flat, Motionless</span></div>
+                    <div className="flex justify-between"><span>Ideal Gyro Bias:</span><span className="text-white font-bold">0.0000 rad/s</span></div>
+                    <div className="flex justify-between"><span>Ideal Dynamic a:</span><span className="text-white font-bold">0.0000 m/s²</span></div>
+                    <div className="flex justify-between"><span>Known Duration:</span><span className="text-gray-300">{latestRecord.groundTruth.knownDurationSec || latestRecord.durationSec}s</span></div>
+                    <div className="flex justify-between"><span>Device:</span><span className="text-gray-300">{latestRecord.device}</span></div>
+                  </>
+                ) : latestRecord.testId === 'TEST-02' ? (
+                  <>
+                    <div className="flex justify-between"><span>Physical Posture:</span><span className="text-gray-200">Flat, Motionless</span></div>
+                    <div className="flex justify-between"><span>True Speed:</span><span className="text-white font-bold">0.00 m/s</span></div>
+                    <div className="flex justify-between"><span>True Displacement:</span><span className="text-white font-bold">0.00 m</span></div>
+                    <div className="flex justify-between"><span>Known Duration:</span><span className="text-gray-300">{latestRecord.groundTruth.knownDurationSec || latestRecord.durationSec}s</span></div>
+                    <div className="flex justify-between"><span>Device:</span><span className="text-gray-300">{latestRecord.device}</span></div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between"><span>Known Duration:</span><span className="text-gray-300">{latestRecord.groundTruth.knownDurationSec || '---'}s</span></div>
+                    {latestRecord.groundTruth.trueSteps !== undefined && (
+                      <div className="flex justify-between"><span>True Steps:</span><span className="text-white font-bold">{latestRecord.groundTruth.trueSteps}</span></div>
+                    )}
+                    {latestRecord.groundTruth.trueDistanceMeters !== undefined && (
+                      <div className="flex justify-between"><span>Tape Distance:</span><span className="text-white font-bold">{latestRecord.groundTruth.trueDistanceMeters}m</span></div>
+                    )}
+                    {latestRecord.groundTruth.knownOutageDurationSec !== undefined && (
+                      <div className="flex justify-between"><span>Outage Duration:</span><span className="text-white font-bold">{latestRecord.groundTruth.knownOutageDurationSec}s</span></div>
+                    )}
+                    <div className="flex justify-between"><span>True Heading:</span><span className="text-gray-300">{latestRecord.groundTruth.trueHeadingDeg !== undefined ? `${latestRecord.groundTruth.trueHeadingDeg}°` : '---'}</span></div>
+                    <div className="flex justify-between"><span>Environment:</span><span className="text-gray-300">{latestRecord.device}</span></div>
+                  </>
+                )}
               </div>
             </div>
 
-            {/* Error Calculations Column */}
+            {/* Column 3: Error Calculations & Criteria */}
             <div className="bg-background/60 border border-border rounded-xl p-3.5 space-y-2">
               <span className="text-[10px] font-bold text-warning uppercase tracking-wider block border-b border-border pb-1">
                 Calculated Error Metrics
               </span>
               <div className="space-y-1">
-                {latestRecord.errors.stepAccuracyPct !== undefined && (
-                  <div className="flex justify-between">
-                    <span>Step Accuracy:</span>
-                    <span className={`font-bold ${latestRecord.errors.stepAccuracyPct >= 90 ? 'text-success' : 'text-warning'}`}>
-                      {latestRecord.errors.stepAccuracyPct}%
-                    </span>
-                  </div>
-                )}
-                {latestRecord.errors.distanceErrorPct !== undefined && (
-                  <div className="flex justify-between">
-                    <span>Distance Error:</span>
-                    <span className={`font-bold ${latestRecord.errors.distanceErrorPct <= 10 ? 'text-success' : 'text-warning'}`}>
-                      {latestRecord.errors.distanceErrorPct}% ({latestRecord.errors.distanceErrorMeters}m)
-                    </span>
-                  </div>
-                )}
-                {latestRecord.errors.driftRateMPerMin !== undefined && (
-                  <div className="flex justify-between">
-                    <span>Drift Rate:</span>
-                    <span className="text-white font-bold">{latestRecord.errors.driftRateMPerMin} m/min</span>
-                  </div>
-                )}
-                {latestRecord.errors.gpsOutageLatencyMs !== undefined && (
-                  <div className="flex justify-between">
-                    <span>Outage Latency:</span>
-                    <span className="text-white font-bold">{latestRecord.errors.gpsOutageLatencyMs} ms</span>
-                  </div>
-                )}
-                {latestRecord.errors.gpsReacquisitionInnovationM !== undefined && (
-                  <div className="flex justify-between">
-                    <span>Reacq Inno:</span>
-                    <span className="text-white font-bold">{latestRecord.errors.gpsReacquisitionInnovationM} m</span>
-                  </div>
+                {latestRecord.testId === 'TEST-01' ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span>Gyro Bias Status:</span>
+                      <span className={`font-bold ${latestRecord.errors.gyroBiasNorm !== undefined && latestRecord.errors.gyroBiasNorm < 0.03 ? 'text-success' : 'text-danger'}`}>
+                        {latestRecord.errors.gyroBiasNorm !== undefined && latestRecord.errors.gyroBiasNorm < 0.03 ? 'PASS (< 0.03 rad/s)' : 'FAIL'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Accel Noise:</span>
+                      <span className={`font-bold ${latestRecord.errors.accelNoiseStd !== undefined && latestRecord.errors.accelNoiseStd < 0.15 ? 'text-success' : 'text-danger'}`}>
+                        {latestRecord.errors.accelNoiseStd !== undefined && latestRecord.errors.accelNoiseStd < 0.15 ? 'PASS (< 0.15 m/s²)' : 'FAIL'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Gyro Noise:</span>
+                      <span className={`font-bold ${latestRecord.errors.gyroNoiseStd !== undefined && latestRecord.errors.gyroNoiseStd < 0.04 ? 'text-success' : 'text-danger'}`}>
+                        {latestRecord.errors.gyroNoiseStd !== undefined && latestRecord.errors.gyroNoiseStd < 0.04 ? 'PASS (< 0.04 rad/s)' : 'FAIL'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Calibration Saved:</span>
+                      <span className="text-success font-bold">{latestRecord.calibrationState}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Inertial Drift:</span>
+                      <span className="text-white font-bold">{latestRecord.errors.inertialDriftMPerMin ?? 0} m/min</span>
+                    </div>
+                  </>
+                ) : latestRecord.testId === 'TEST-02' ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span>Speed Clamp:</span>
+                      <span className={`font-bold ${latestRecord.measured.maxSpeedMps < 0.08 ? 'text-success' : 'text-danger'}`}>
+                        {latestRecord.measured.maxSpeedMps < 0.08 ? 'PASS (< 0.08 m/s)' : 'FAIL'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Final Velocity:</span>
+                      <span className={`font-bold ${(latestRecord.measured.finalVelocityMps || 0) < 0.03 ? 'text-success' : 'text-danger'}`}>
+                        {(latestRecord.measured.finalVelocityMps || 0) < 0.03 ? 'PASS (< 0.03 m/s)' : 'FAIL'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Inertial Drift:</span>
+                      <span className={`font-bold ${latestRecord.measured.pdrDisplacementMeters < 0.05 ? 'text-success' : 'text-danger'}`}>
+                        {latestRecord.measured.pdrDisplacementMeters < 0.05 ? 'PASS (0.00m)' : 'FAIL'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>ZUPT Engagement:</span>
+                      <span className={`font-bold ${(latestRecord.measured.zuptActivationPct || 100) >= 90 ? 'text-success' : 'text-warning'}`}>
+                        {(latestRecord.measured.zuptActivationPct || 100) >= 90 ? 'PASS' : 'WARN'}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {latestRecord.errors.stepAccuracyPct !== undefined && (
+                      <div className="flex justify-between">
+                        <span>Step Accuracy:</span>
+                        <span className={`font-bold ${latestRecord.errors.stepAccuracyPct >= 90 ? 'text-success' : 'text-warning'}`}>
+                          {latestRecord.errors.stepAccuracyPct}%
+                        </span>
+                      </div>
+                    )}
+                    {latestRecord.errors.stepError !== undefined && (
+                      <div className="flex justify-between">
+                        <span>Step Error:</span>
+                        <span className="text-white font-bold">{latestRecord.errors.stepError} steps</span>
+                      </div>
+                    )}
+                    {latestRecord.errors.distanceErrorPct !== undefined && (
+                      <div className="flex justify-between">
+                        <span>Distance Error:</span>
+                        <span className={`font-bold ${latestRecord.errors.distanceErrorPct <= 10 ? 'text-success' : 'text-warning'}`}>
+                          {latestRecord.errors.distanceErrorPct}% ({latestRecord.errors.distanceErrorMeters}m)
+                        </span>
+                      </div>
+                    )}
+                    {latestRecord.errors.driftRateMPerMin !== undefined && (
+                      <div className="flex justify-between">
+                        <span>Drift Rate:</span>
+                        <span className="text-white font-bold">{latestRecord.errors.driftRateMPerMin} m/min</span>
+                      </div>
+                    )}
+                    {latestRecord.errors.gpsOutageLatencyMs !== undefined && (
+                      <div className="flex justify-between">
+                        <span>Outage Latency:</span>
+                        <span className="text-white font-bold">{latestRecord.errors.gpsOutageLatencyMs} ms</span>
+                      </div>
+                    )}
+                    {latestRecord.errors.gpsReacquisitionInnovationM !== undefined && (
+                      <div className="flex justify-between">
+                        <span>Reacq Inno:</span>
+                        <span className="text-white font-bold">{latestRecord.errors.gpsReacquisitionInnovationM} m</span>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
           </div>
+
+          {/* Drift Decomposition Banner for Stationary Tests */}
+          {(latestRecord.testId === 'TEST-01' || latestRecord.testId === 'TEST-02') && (
+            <div className="bg-background/80 border border-primary/25 rounded-xl p-3 font-mono text-xs space-y-1">
+              <span className="text-primary font-bold block uppercase tracking-wider text-[10px]">
+                Motion Breakdown: GPS Wander vs Inertial PDR Displacement
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] pt-1">
+                <div className="p-2 rounded bg-black/30 border border-border/50">
+                  <span className="text-muted block text-[10px]">Inertial PDR Movement:</span>
+                  <span className="font-bold text-success text-sm">{latestRecord.measured.pdrDisplacementMeters} m</span>
+                  <span className="text-[10px] text-gray-400 block mt-0.5">Clamped by ZUPT / Motion Classifier</span>
+                </div>
+                <div className="p-2 rounded bg-black/30 border border-border/50">
+                  <span className="text-muted block text-[10px]">GPS-Induced Movement:</span>
+                  <span className="font-bold text-warning text-sm">
+                    {latestRecord.measured.gpsDisplacementMeters !== null && latestRecord.measured.gpsDisplacementMeters !== undefined
+                      ? `${latestRecord.measured.gpsDisplacementMeters} m`
+                      : 'None (GPS Denied)'}
+                  </span>
+                  <span className="text-[10px] text-gray-400 block mt-0.5">Raw smartphone GNSS multipath wander</span>
+                </div>
+                <div className="p-2 rounded bg-black/30 border border-border/50">
+                  <span className="text-muted block text-[10px]">Total EKF FDE:</span>
+                  <span className="font-bold text-white text-sm">{latestRecord.measured.fdeMeters} m</span>
+                  <span className="text-[10px] text-gray-400 block mt-0.5">Displacement relative to start</span>
+                </div>
+              </div>
+              {latestRecord.measured.gpsDisplacementMeters && latestRecord.measured.gpsDisplacementMeters > 0.5 ? (
+                <p className="text-[10px] text-gray-400 pt-1 leading-relaxed">
+                  Notice: During stationary testing with GPS active, smartphone GNSS jitter shifts the Kalman position estimate ({latestRecord.measured.fdeMeters}m), while the dead-reckoning PDR engine correctly detects zero steps and preserves {latestRecord.measured.pdrDisplacementMeters}m displacement.
+                </p>
+              ) : null}
+            </div>
+          )}
 
           <div className="text-[11px] font-mono text-muted bg-background/40 p-2.5 rounded-lg border border-border flex justify-between items-center">
             <span>Pass Rule: <strong>{latestRecord.passCriteria}</strong></span>
@@ -608,7 +869,7 @@ export const FieldTestPage: React.FC = () => {
                   <th className="p-2">Duration</th>
                   <th className="p-2">Steps (Meas/GT)</th>
                   <th className="p-2">Dist (Meas/GT)</th>
-                  <th className="p-2">Accuracy / Error</th>
+                  <th className="p-2">Accuracy / Metrics</th>
                   <th className="p-2">Result</th>
                   <th className="p-2 text-right">Action</th>
                 </tr>
@@ -620,13 +881,25 @@ export const FieldTestPage: React.FC = () => {
                     <td className="p-2 text-white truncate max-w-[140px]">{rec.testName}</td>
                     <td className="p-2 text-gray-300">{rec.durationSec}s</td>
                     <td className="p-2 text-gray-300">
-                      {rec.measured.steps} / {rec.groundTruth.trueSteps || '---'}
+                      {rec.testId === 'TEST-01' || rec.testId === 'TEST-02' ? (
+                        <span className="text-muted">0 (Stationary)</span>
+                      ) : (
+                        `${rec.measured.steps} / ${rec.groundTruth.trueSteps ?? '---'}`
+                      )}
                     </td>
                     <td className="p-2 text-gray-300">
-                      {rec.measured.distanceMeters}m / {rec.groundTruth.trueDistanceMeters ? `${rec.groundTruth.trueDistanceMeters}m` : '---'}
+                      {rec.testId === 'TEST-01' || rec.testId === 'TEST-02' ? (
+                        <span className="text-muted">0.0m (Stationary)</span>
+                      ) : (
+                        `${rec.measured.distanceMeters}m / ${rec.groundTruth.trueDistanceMeters ? `${rec.groundTruth.trueDistanceMeters}m` : '---'}`
+                      )}
                     </td>
                     <td className="p-2">
-                      {rec.errors.stepAccuracyPct !== undefined ? (
+                      {rec.testId === 'TEST-01' ? (
+                        <span className="text-success">Bias: {rec.measured.gyroBiasNorm ?? 0} rad/s</span>
+                      ) : rec.testId === 'TEST-02' ? (
+                        <span className="text-success">Speed: {rec.measured.maxSpeedMps} m/s</span>
+                      ) : rec.errors.stepAccuracyPct !== undefined ? (
                         <span className="text-success">{rec.errors.stepAccuracyPct}% acc</span>
                       ) : rec.errors.distanceErrorPct !== undefined ? (
                         <span className="text-warning">{rec.errors.distanceErrorPct}% err</span>
@@ -676,6 +949,19 @@ export const FieldTestPage: React.FC = () => {
             </div>
 
             <div className="space-y-3 font-mono text-xs">
+              {/* Stationary Notice for TEST-01 and TEST-02 */}
+              {(selectedTestId === 'TEST-01' || selectedTestId === 'TEST-02') && (
+                <div className="bg-primary/10 border border-primary/30 rounded-xl p-3.5 space-y-1">
+                  <div className="flex items-center space-x-1.5 text-primary font-bold text-xs font-mono">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>NO WALKING GROUND TRUTH REQUIRED</span>
+                  </div>
+                  <p className="text-[11px] text-gray-300 font-mono leading-relaxed">
+                    This is a stationary bench test. Accelerometer/gyroscope biases, noise floors, velocity clamping, and stationary drift are calculated directly from physical sensor streams. No steps or tape-measured distances are required.
+                  </p>
+                </div>
+              )}
+
               {activeDef.groundTruthPrompts.steps && (
                 <div>
                   <label className="text-[10px] text-muted uppercase font-bold block mb-1">

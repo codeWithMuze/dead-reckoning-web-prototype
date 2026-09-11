@@ -44,17 +44,24 @@ export interface MeasuredTelemetry {
   distanceMeters: number;
   pdrStartPos: { east: number; north: number };
   pdrEndPos: { east: number; north: number };
+  pdrDisplacementMeters: number; // Inertial / PDR movement
   ekfStartPos: { east: number; north: number };
   ekfEndPos: { east: number; north: number };
   gpsStartPos?: { latitude: number; longitude: number } | null;
   gpsEndPos?: { latitude: number; longitude: number } | null;
+  gpsDisplacementMeters?: number | null; // GPS-induced position movement
   startHeadingDeg: number;
   endHeadingDeg: number;
   maxSpeedMps: number;
   meanSpeedMps: number;
+  finalVelocityMps?: number;
+  zuptActivationPct?: number; // % of time ZUPT was active
+  gyroBiasNorm?: number; // rad/s
+  accelNoiseStd?: number; // m/s²
+  gyroNoiseStd?: number; // rad/s
   finalUncertainty1Sigma: number;
   finalUncertainty2Sigma: number;
-  fdeMeters: number; // Final Displacement Error relative to start/target
+  fdeMeters: number; // Final Displacement Error of EKF
   gpsOutageLatencyMs?: number;
   measuredOutageDurationSec?: number;
   gpsReacquisitionInnovationM?: number;
@@ -69,6 +76,11 @@ export interface CalculatedErrors {
   distanceErrorPct?: number;
   finalDisplacementErrorMeters?: number; // FDE
   driftRateMPerMin?: number;
+  inertialDriftMPerMin?: number; // Drift rate from pure PDR/inertial displacement
+  gpsWanderMeters?: number; // Movement induced by GPS noise
+  gyroBiasNorm?: number;
+  accelNoiseStd?: number;
+  gyroNoiseStd?: number;
   headingErrorDeg?: number;
   headingDriftRateDegPerMin?: number;
   gpsOutageLatencyMs?: number;

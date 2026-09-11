@@ -1,5 +1,6 @@
 import type { CalibrationData, Vector3D } from '../types';
 import { calcStats } from './MathUtils.ts';
+import { useNavStore } from '../store/useNavStore.ts';
 
 const STORAGE_KEY = 'navisense_calibration_v1';
 
@@ -122,6 +123,12 @@ export class CalibrationManager {
 
     this.saveToStorage();
 
+    try {
+      useNavStore.getState().updateCalibration(this.currentCalibration);
+    } catch {
+      // store may not be initialized yet
+    }
+
     if (this.onCompleteCallback) {
       this.onCompleteCallback(this.currentCalibration);
     }
@@ -142,6 +149,9 @@ export class CalibrationManager {
         const parsed = JSON.parse(raw);
         if (parsed && parsed.calibrated) {
           this.currentCalibration = parsed;
+          try {
+            useNavStore.getState().updateCalibration(this.currentCalibration);
+          } catch {}
         }
       }
     } catch {
@@ -159,6 +169,7 @@ export class CalibrationManager {
       samples: 0,
     };
     try {
+      useNavStore.getState().updateCalibration(this.currentCalibration);
       localStorage.removeItem(STORAGE_KEY);
     } catch {
       // ignore

@@ -51,16 +51,20 @@ export class StepDetector {
     return this.totalDistanceMeters;
   }
 
-  public reset() {
-    this.stepCount = 0;
-    this.lastStepTimestamp = 0;
+  public resetCadence() {
     this.cadence = 0;
-    this.totalDistanceMeters = 0;
+    this.lastStepTimestamp = 0;
     this.filteredAccel = 0;
     this.prevFilteredAccel = 0;
     this.prevSlope = 0;
     this.windowAccelMin = 999;
     this.windowAccelMax = -999;
+  }
+
+  public reset() {
+    this.stepCount = 0;
+    this.totalDistanceMeters = 0;
+    this.resetCadence();
   }
 
   /**
