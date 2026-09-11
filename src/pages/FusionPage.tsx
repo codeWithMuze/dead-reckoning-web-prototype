@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavStore } from '../store/useNavStore.ts';
 import { aiModule } from '../engine/AIModule.ts';
-import type { TrainingProgress } from '../engine/ml/MLPTypes.ts';
+import type { TrainingProgress, MLPModelData } from '../engine/ml/MLPTypes.ts';
 import {
   Cpu,
   Sparkles,
@@ -13,6 +13,7 @@ import {
   Layers,
   Zap,
   ShieldCheck,
+  CheckCircle2,
 } from 'lucide-react';
 
 export const FusionPage: React.FC = () => {
@@ -21,6 +22,9 @@ export const FusionPage: React.FC = () => {
   const [isTraining, setIsTraining] = useState(false);
   const [trainProgress, setTrainProgress] = useState<TrainingProgress | null>(null);
   const [trainError, setTrainError] = useState<string | null>(null);
+  const [lastMetrics, setLastMetrics] = useState<NonNullable<MLPModelData['trainingMetrics']> | null>(() => {
+    return aiModule.getModelData()?.trainingMetrics || null;
+  });
   const [datasetCount, setDatasetCount] = useState({
     samples: aiModule.getDatasetSampleCount(),
     sessions: aiModule.getDatasetSessionCount(),
@@ -49,16 +53,30 @@ export const FusionPage: React.FC = () => {
     setTrainProgress(null);
 
     try {
-      await aiModule.trainOnRecordedSessions(
+      if (aiModule.getDatasetSampleCount() < 10) {
+        aiModule.syncFromFieldTestRecords();
+      }
+      if (aiModule.getDatasetSampleCount() < 10) {
+        aiModule.loadSampleDataset();
+      }
+      refreshDatasetCounts();
+
+      const metrics = await aiModule.trainOnRecordedSessions(
         { epochs: 40, learningRate: 0.008, batchSize: 8, valSplitRatio: 0.25 },
         (progress) => setTrainProgress(progress)
       );
+      setLastMetrics(metrics);
       refreshDatasetCounts();
     } catch (err: unknown) {
       setTrainError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsTraining(false);
     }
+  };
+
+  const handleLoadSampleDataset = () => {
+    aiModule.loadSampleDataset();
+    refreshDatasetCounts();
   };
 
   const handleExportDatasetCSV = () => {
@@ -96,6 +114,7 @@ export const FusionPage: React.FC = () => {
       aiModule.loadPretrainedModel();
       setTrainProgress(null);
       setTrainError(null);
+      setLastMetrics(null);
       refreshDatasetCounts();
     }
   };
@@ -103,6 +122,7 @@ export const FusionPage: React.FC = () => {
   const handleClearDataset = () => {
     if (confirm('Clear all recorded training samples from local storage?')) {
       aiModule.clearDataset();
+      setLastMetrics(null);
       refreshDatasetCounts();
     }
   };
@@ -402,6 +422,29 @@ export const FusionPage: React.FC = () => {
                       }}
                     />
                   </div>
+                  <div className="flex justify-between text-[10px] font-mono text-muted">
+                    <span>Val Loss: {trainProgress.valLoss?.toFixed(4) ?? '---'}</span>
+                    <span>SGD Momentum (η=0.008)</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Training Complete Badge & Metrics */}
+              {!isTraining && lastMetrics && (
+                <div className="bg-success/10 border border-success/30 p-3 rounded-xl space-y-1.5 font-mono text-xs">
+                  <div className="flex items-center space-x-2 text-success font-bold">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>On-Device Training Complete</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-300 pt-1">
+                    <div>Final Train Loss: <span className="text-white font-bold">{lastMetrics.trainLoss.toFixed(4)}</span></div>
+                    <div>Final Val Loss: <span className="text-white font-bold">{lastMetrics.valLoss.toFixed(4)}</span></div>
+                    <div>Validation MAE: <span className="text-white font-bold">{lastMetrics.testMae.toFixed(4)}</span></div>
+                    <div>Dataset Steps: <span className="text-white font-bold">{lastMetrics.sampleCount}</span></div>
+                  </div>
+                  <div className="text-[10px] text-muted pt-0.5">
+                    Model weights updated in localStorage & active in real-time PDR.
+                  </div>
                 </div>
               )}
 
@@ -416,10 +459,11 @@ export const FusionPage: React.FC = () => {
             <div className="space-y-2 pt-2">
               <div className="grid grid-cols-2 gap-2">
                 <button
+                  id="btn-train-on-device"
                   onClick={handleTrainOnDevice}
-                  disabled={isTraining || datasetCount.samples < 10}
+                  disabled={isTraining}
                   className={`px-3 py-2 rounded-xl text-xs font-bold font-mono flex items-center justify-center space-x-1.5 cursor-pointer transition-all ${
-                    datasetCount.samples >= 10 && !isTraining
+                    !isTraining
                       ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-600/20'
                       : 'bg-panel border border-border text-gray-500 cursor-not-allowed'
                   }`}
@@ -437,13 +481,21 @@ export const FusionPage: React.FC = () => {
                 </button>
               </div>
 
-              <div className="flex justify-between items-center text-[11px] pt-1">
-                <button
-                  onClick={handleExportModelJSON}
-                  className="text-muted hover:text-white underline cursor-pointer"
-                >
-                  Export Model Weights (.json)
-                </button>
+              <div className="flex flex-wrap justify-between items-center text-[11px] pt-1 gap-2">
+                <div className="flex items-center space-x-3">
+                  <button
+                    onClick={handleExportModelJSON}
+                    className="text-muted hover:text-white underline cursor-pointer"
+                  >
+                    Export Model Weights (.json)
+                  </button>
+                  <button
+                    onClick={handleLoadSampleDataset}
+                    className="text-muted hover:text-purple-300 underline cursor-pointer"
+                  >
+                    + Seed Sample Data
+                  </button>
+                </div>
                 <div className="space-x-3">
                   <button
                     onClick={handleResetPretrained}

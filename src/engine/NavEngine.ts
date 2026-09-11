@@ -259,7 +259,7 @@ export class NavEngine {
     const stepEvent = this.stepDetector.processSample(linearAccelWorld.z, sample.timestamp, headingDeg);
     let currentMlPrediction: import('../types').MLPrediction | null = null;
 
-    if (stepEvent && this.origin) {
+    if (stepEvent) {
       let effectiveStride = stepEvent.strideLength;
       let dE = stepEvent.displacement.dE;
       let dN = stepEvent.displacement.dN;
@@ -286,15 +286,18 @@ export class NavEngine {
       // Update EKF with PDR step constraint
       this.ekf.updatePDRStep(this.pdrLocalPos.east, this.pdrLocalPos.north, 0.7);
 
-      // Convert PDR local position to geodetic coordinates
-      const pdrGeodetic = enuToGeodetic(
-        this.pdrLocalPos.east,
-        this.pdrLocalPos.north,
-        this.origin.latitude,
-        this.origin.longitude
-      );
+      // Convert PDR local position to geodetic coordinates if origin exists
+      let pdrGeodetic: { latitude: number; longitude: number } | null = null;
+      if (this.origin) {
+        pdrGeodetic = enuToGeodetic(
+          this.pdrLocalPos.east,
+          this.pdrLocalPos.north,
+          this.origin.latitude,
+          this.origin.longitude
+        );
+        store.addDrPoint(pdrGeodetic.latitude, pdrGeodetic.longitude);
+      }
 
-      store.addDrPoint(pdrGeodetic.latitude, pdrGeodetic.longitude);
       store.updatePDR({
         stepCount: this.stepDetector.getStepCount(),
         cadence: this.stepDetector.getCadence(),

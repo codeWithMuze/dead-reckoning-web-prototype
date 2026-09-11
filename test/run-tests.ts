@@ -602,7 +602,7 @@ for (let s = 1; s <= 2; s++) {
 
 let lastEpoch = 0;
 let firstEpochLoss = 0;
-const { model: trainedModel, metrics } = NeuralRegressor.trainOnDataset(
+const { model: trainedModel, metrics } = await NeuralRegressor.trainOnDataset(
   trainingSamples,
   { epochs: 25, learningRate: 0.012, batchSize: 6, valSplitRatio: 0.3 },
   (progress) => {

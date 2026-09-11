@@ -183,11 +183,12 @@ export class NeuralRegressor {
     for (let l = 0; l < layerDims.length - 1; l++) {
       const fanIn = layerDims[l];
       const fanOut = layerDims[l + 1];
-      // He (Kaiming) initialization standard dev
-      const std = Math.sqrt(2.0 / fanIn);
+      const isOutputLayer = l === layerDims.length - 2;
+      // He (Kaiming) initialization for hidden layers; smaller std and bias = 1.0 for output layer
+      const std = isOutputLayer ? Math.sqrt(0.05 / fanIn) : Math.sqrt(2.0 / fanIn);
 
       const weights: number[][] = [];
-      const biases: number[] = new Array(fanOut).fill(0.01);
+      const biases: number[] = new Array(fanOut).fill(isOutputLayer ? 1.0 : 0.01);
 
       for (let i = 0; i < fanOut; i++) {
         const row: number[] = [];
@@ -219,11 +220,11 @@ export class NeuralRegressor {
   /**
    * Trains the MLP model on a session-labeled dataset using Mini-Batch Gradient Descent with Momentum.
    */
-  public static trainOnDataset(
+  public static async trainOnDataset(
     samples: DatasetSample[],
     config: TrainingConfig,
     onProgress?: (progress: TrainingProgress) => void
-  ): { model: MLPModelData; metrics: NonNullable<MLPModelData['trainingMetrics']> } {
+  ): Promise<{ model: MLPModelData; metrics: NonNullable<MLPModelData['trainingMetrics']> }> {
     if (samples.length < 10) {
       throw new Error('Insufficient samples for training. Need at least 10 labeled steps.');
     }
@@ -418,7 +419,7 @@ export class NeuralRegressor {
         bestValLoss = finalValLoss;
       }
 
-      if (onProgress && (epoch % 5 === 0 || epoch === config.epochs)) {
+      if (onProgress && (epoch % 2 === 0 || epoch === config.epochs)) {
         onProgress({
           epoch,
           totalEpochs: config.epochs,
@@ -426,6 +427,8 @@ export class NeuralRegressor {
           valLoss: Number(finalValLoss.toFixed(5)),
           isComplete: epoch === config.epochs,
         });
+        // Yield to browser event loop so UI can animate progress bar and loss
+        await new Promise((resolve) => setTimeout(resolve, 15));
       }
     }
 
@@ -460,6 +463,7 @@ export class NeuralRegressor {
       sessionCount: sessions.length,
     };
 
+    modelData.modelName = `NaviSense-MLP-OnDevice (${samples.length} steps)`;
     modelData.trainingMetrics = metrics;
 
     return { model: modelData, metrics };
